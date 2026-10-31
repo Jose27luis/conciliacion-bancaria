@@ -1,8 +1,10 @@
 import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type {
   CuentaContable,
+  CrearCuentaContableEntrada,
   CuentasContablesQuery,
   DestinosCuentaEntrada,
+  EditarCuentaContableEntrada,
   ImportacionPlanRechazo,
   ImportacionPlanResultado,
   OpcionCuentaContable,
@@ -72,6 +74,82 @@ export class ChartOfAccountsService {
         entidad: "cuenta_contable",
         entidadId: codigo,
         accion: activa ? "ACTIVAR" : "DESACTIVAR",
+      });
+      return editada;
+    });
+  }
+
+  async crear(entrada: CrearCuentaContableEntrada, actor: UsuarioSesion): Promise<CuentaContable> {
+    const codigo = entrada.codigo;
+    return this.repositorio.transaccion(async (tx) => {
+      const prefijos = Array.from({ length: codigo.length - 2 }, (_valor, indice) => codigo.slice(0, codigo.length - 1 - indice));
+      const conocidas = await this.repositorio.cuentasPorCodigo(tx, [codigo, ...prefijos]);
+      if (conocidas.some((cuenta) => cuenta.codigo === codigo)) {
+        throw errores.conflicto(`La cuenta ${codigo} ya existe.`, { codigo: "Ese código ya existe." });
+      }
+      const padre = prefijos.map((prefijo) => conocidas.find((cuenta) => cuenta.codigo === prefijo)).find((cuenta) => cuenta !== undefined) ?? null;
+      if (!padre && codigo.length > 2) {
+        const mensaje = `No existe ninguna cuenta superior de ${codigo}. Crea primero la cuenta ${codigo.slice(0, 2)}.`;
+        throw errores.validacion(mensaje, { codigo: mensaje });
+      }
+      if (padre && !padre.activa) {
+        const mensaje = `La cuenta superior ${padre.codigo} está desactivada.`;
+        throw errores.validacion(mensaje, { codigo: mensaje });
+      }
+
+      const subcuentas = await this.repositorio.subcuentasQueCuelganDe(tx, padre?.codigo ?? null, codigo);
+      if (padre?.deMovimiento) {
+        const usos = await this.repositorio.usosQueRequierenMovimiento(tx, padre.codigo);
+        const detalle = [
+          ...usos.tesoreria.map((nombre) => `la cuenta de tesorería ${nombre}`),
+          ...usos.plantillas.map((etiqueta) => `la plantilla ${etiqueta}`),
+        ];
+        if (detalle.length > 0) {
+          const mensaje = `La cuenta ${padre.codigo} pasaría a ser agrupadora y la usa ${detalle.join(", ")}. Cámbiala ahí primero.`;
+          throw errores.conflicto(mensaje, { codigo: mensaje });
+        }
+        await this.repositorio.actualizarCuentaContable(tx, padre.codigo, { deMovimiento: false });
+      }
+
+      const creada = await this.repositorio.crearCuentaContable(tx, {
+        codigo,
+        denominacion: entrada.denominacion.trim(),
+        padreCodigo: padre?.codigo ?? null,
+        nivel: padre ? padre.nivel + 1 : 1,
+        deMovimiento: subcuentas.length === 0,
+        tipo: entrada.tipo,
+        clase: entrada.clase,
+        moneda: entrada.moneda,
+        analitica: entrada.analitica,
+        centroCosto: entrada.centroCosto,
+      });
+      await this.repositorio.colgarDe(tx, subcuentas, codigo, codigo);
+      await this.auditoria.registrar(tx, {
+        usuarioId: actor.id,
+        entidad: "cuenta_contable",
+        entidadId: codigo,
+        accion: "CREAR",
+        despues: { ...entrada, padre: padre?.codigo ?? null, padreAhoraAgrupadora: padre?.deMovimiento ?? false, subcuentasReasignadas: subcuentas },
+      });
+      return creada;
+    });
+  }
+
+  async editar(codigo: string, entrada: EditarCuentaContableEntrada, actor: UsuarioSesion): Promise<CuentaContable> {
+    return this.repositorio.transaccion(async (tx) => {
+      const actual = await this.repositorio.buscarCuentaContable(tx, codigo);
+      if (!actual) {
+        throw errores.noEncontrado(`La cuenta ${codigo} no existe en el plan contable.`);
+      }
+      const datos = { ...entrada, denominacion: entrada.denominacion.trim() };
+      const editada = await this.repositorio.editarCuentaContable(tx, codigo, datos);
+      await this.auditoria.registrar(tx, {
+        usuarioId: actor.id,
+        entidad: "cuenta_contable",
+        entidadId: codigo,
+        accion: "EDITAR",
+        antes: { denominacion: actual.denominacion, tipo: actual.tipo, clase: actual.clase, moneda: actual.moneda, analitica: actual.analitica, centroCosto: actual.centroCosto },
+        despues: datos,
       });
       return editada;
     });
