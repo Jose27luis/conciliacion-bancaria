@@ -10,7 +10,7 @@ Aplicativo web de **conciliación bancaria** para registrar los movimientos de b
 | **Frontend** | Next.js (App Router) + shadcn/ui + Tailwind CSS |
 | **Base de datos** | PostgreSQL |
 | **Monorepo** | pnpm workspaces (`apps/api`, `apps/web`, `packages/contracts`) |
-| **Estado** | Fases 1 y 2 implementadas: sesión, usuarios, plan contable, catálogos SUNAT, cuentas de tesorería y Registro rápido. |
+| **Estado** | Fases 1, 2 y 3 implementadas: sesión, usuarios, plan contable, catálogos SUNAT, cuentas de tesorería, Registro rápido y Libro de movimientos (edición, anulación y exportación a Excel). |
 
 ---
 
@@ -336,6 +336,7 @@ erDiagram
         decimal ingreso "NUMERIC 14,2"
         decimal egreso "NUMERIC 14,2"
         string cuenta_contable_codigo FK "CTA"
+        bool vigente "false si se quitó al editar"
     }
     entidades {
         uuid id PK
@@ -598,7 +599,7 @@ flowchart LR
 | Pantalla | Qué hace | Estado del diseño |
 |---|---|---|
 | **Registro rápido** | Hoja de captura por cuenta y mes, autocompletado, vouchers con varias líneas, validación, avisos de duplicado, atajos y registro por lote. | Implementado (fase 2) |
-| **Libro de movimientos** | Lista por periodo/cuenta con filtros (entidad, CTA, COD, analítico, pendientes), edición, anulación y exportación a Excel con el formato actual. | Por diseñar |
+| **Libro de movimientos** | Vouchers del mes con filtros (cuenta, estado y búsqueda por voucher, documento, razón social, analítico, detalle o CTA), totales por moneda, edición, anulación con motivo y exportación a Excel con las columnas del modelo. | Implementado (fase 3) |
 | **Maestros** | CRUD de entidades, plan contable (importación), medios de pago, tipo de cambio y plantillas. | Por diseñar |
 | **Resumen y cierre** | Totales de ingreso, egreso y neto por cuenta y mes, saldo inicial y final, pendientes y cierre de periodo. | Por diseñar |
 | **Configuración** | Cuentas de tesorería, usuarios y roles, importación del Excel histórico. | Por diseñar |
@@ -651,8 +652,32 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `GET` | `/ledger/sheet?cuenta=&anio=&mes=` | Hoja de una cuenta en un mes y próximo correlativo |
 | `POST` | `/ledger/vouchers/warnings` | Avisos de duplicado sin guardar |
 | `POST` | `/ledger/vouchers` | Registra un lote de vouchers en una transacción |
+| `GET` | `/ledger/vouchers?anio=&mes=&cuenta=&estado=&q=` | Libro de movimientos paginado con totales por moneda |
+| `GET` | `/ledger/vouchers/:id` | Un voucher con sus líneas vigentes |
+| `PUT` | `/ledger/vouchers/:id` | Edita un voucher del mes abierto conservando su número |
+| `POST` | `/ledger/vouchers/:id/void` | Anula con motivo |
+| `GET` | `/ledger/export.xlsx?anio=&mes=&cuenta=` | Excel con una hoja por cuenta y las columnas del modelo |
 
-**Previstos** para las siguientes fases: edición y anulación de vouchers, libro con filtros y exportación a Excel, cierre y reapertura de periodos, importación del Excel histórico y resumen por cuenta.
+**Previstos** para las siguientes fases: plantillas de atajos, cierre y reapertura de periodos, importación del Excel histórico y resumen por cuenta.
+
+### 10.1 Edición y anulación
+
+```mermaid
+flowchart LR
+    L[Libro de movimientos] -->|Editar| Q[Registro rápido<br/>fila en edición con su número]
+    R[Hoja: lápiz en la fila] --> Q
+    Q -->|Ctrl+Enter| V{¿Mes abierto,<br/>no anulado y con permiso?}
+    V -->|No| X[Rechazo con motivo]
+    V -->|Sí| E[Actualiza cabecera y líneas<br/>líneas quitadas: vigente = false]
+    E --> A[(auditoria EDITAR<br/>antes y después)]
+    L -->|Anular + motivo| N[estado = ANULADO<br/>el número no se reutiliza]
+    N --> A2[(auditoria ANULAR)]
+```
+
+- **No se borra nada**: al editar, las líneas que se quitan quedan con `vigente = false`; al anular, el voucher queda con su motivo y sale del Excel y de los totales.
+- **La fecha no puede cambiar de mes**: el número `MM-NNNNN` pertenece al mes. Para moverlo, se anula y se registra de nuevo.
+- **Permisos**: ADMIN y CONTADOR modifican cualquier voucher; ASISTENTE solo los que registró; LECTOR solo consulta.
+- **Excel**: columnas `Nº/Cheque/Operación · N# Voucher · Fecha Operación · Analítico · Ruc · Razón social · Detalle · T.C · Ingreso · Egreso · CTA · COD`, una fila por línea (los pagos agrupados repiten el voucher, como en el modelo) y una hoja por cuenta.
 
 ---
 
@@ -675,7 +700,7 @@ conciliacion-bancaria/
 │   │       │   ├── masters/          plan contable, catálogos SUNAT, cuentas de tesorería
 │   │       │   ├── periods/          periodos y correlativo mensual
 │   │       │   ├── entities/         proveedores y detalles frecuentes
-│   │       │   └── ledger/           hoja, avisos de duplicado y registro de vouchers
+│   │       │   └── ledger/           hoja, registro, edición, anulación y exportación a Excel
 │   │       └── shared/               prisma, config, errores, documentación Swagger
 │   └── web/                          Next.js + shadcn/ui
 │       ├── components.json
@@ -684,6 +709,7 @@ conciliacion-bancaria/
 │           │   ├── login/
 │           │   └── (app)/
 │           │       ├── quick-entry/  Registro rápido
+│           │       ├── ledger/       Libro de movimientos y descarga del Excel
 │           │       ├── masters/      plan contable, medios de pago, tipos de comprobante
 │           │       └── settings/     cuentas de tesorería, usuarios
 │           ├── modules/              lógica por módulo (actions.ts y ui/)
@@ -798,6 +824,7 @@ flowchart LR
     style F0 fill:#d6f5ec,stroke:#16a085,color:#000
     style F1 fill:#d6f5ec,stroke:#16a085,color:#000
     style F2 fill:#d6f5ec,stroke:#16a085,color:#000
+    style F3 fill:#d6f5ec,stroke:#16a085,color:#000
     style F7 stroke-dasharray: 5 5
 ```
 
