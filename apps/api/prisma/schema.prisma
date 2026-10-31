@@ -254,6 +254,7 @@ model LineaVoucher {
   ingreso              Decimal @default(0) @db.Decimal(14, 2)
   egreso               Decimal @default(0) @db.Decimal(14, 2)
   cuentaContableCodigo String  @map("cuenta_contable_codigo") @db.VarChar(8)
+  vigente              Boolean @default(true)
 
   voucher        Voucher        @relation(fields: [voucherId], references: [id])
   cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
