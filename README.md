@@ -1,0 +1,818 @@
+# Conciliación Bancaria · MAVIZUR
+
+Aplicativo web para **registrar los movimientos de bancos y caja** de MAVIZUR con la misma lógica del Excel que usa hoy el área contable, pero más rápido, validado y sin duplicados.
+
+> Objetivo del cliente: **digitalizar el "MODELO DE CONCILIACIÓN BANCOS 2026"** para capturar datos en menos tiempo. La hoja de captura del sistema respeta las columnas del Excel; lo que el contador ya sabe (proveedor, detalle, cuenta, medio de pago, tipo de cambio) lo completa el sistema.
+
+| | |
+|---|---|
+| **Backend** | NestJS + Prisma (monolito modular) |
+| **Frontend** | Next.js (App Router) + shadcn/ui + Tailwind CSS |
+| **Base de datos** | PostgreSQL |
+| **Monorepo** | pnpm workspaces (`apps/api`, `apps/web`, `packages/contracts`) |
+| **Estado** | Análisis y diseño. Aún no hay código. |
+
+---
+
+## Índice
+
+1. [Documentos de origen](#1-documentos-de-origen)
+2. [Cómo trabajan hoy (análisis del Excel)](#2-cómo-trabajan-hoy-análisis-del-excel)
+3. [Problemas detectados en el Excel](#3-problemas-detectados-en-el-excel)
+4. [Qué propone el sistema](#4-qué-propone-el-sistema)
+5. [Arquitectura](#5-arquitectura)
+6. [Modelo de datos](#6-modelo-de-datos)
+7. [Reglas de negocio](#7-reglas-de-negocio)
+8. [Flujos principales](#8-flujos-principales)
+9. [Módulos y pantallas](#9-módulos-y-pantallas)
+10. [API](#10-api)
+11. [Estructura del repositorio](#11-estructura-del-repositorio)
+12. [Instalación y desarrollo](#12-instalación-y-desarrollo)
+13. [Migración del Excel histórico](#13-migración-del-excel-histórico)
+14. [Hoja de ruta](#14-hoja-de-ruta)
+15. [Decisiones pendientes](#15-decisiones-pendientes)
+16. [Convenciones](#16-convenciones)
+
+---
+
+## 1. Documentos de origen
+
+Todo el material entregado por el cliente vive en [`public/documentos/`](public/documentos/).
+
+| Archivo | Qué es |
+|---|---|
+| `MODELO DE CONCILIACION BANCOS  2026.xlsx` | Libro real con el que registran hoy los movimientos de enero a junio de 2026. Es la **fuente de verdad del proceso**. |
+| `PLAN CONTABLE.xlsx` | Plan Contable General Empresarial con las cuentas propias de la empresa (1 897 cuentas). |
+| `prototipo_conciliacion bancaria.html` | Prototipo navegable de la pantalla **Registro rápido** (export de Claude Design). Abrirlo en el navegador. |
+
+---
+
+## 2. Cómo trabajan hoy (análisis del Excel)
+
+### 2.1 Hojas del libro
+
+El libro tiene 12 hojas, pero solo **4 están visibles y en uso**:
+
+| Hoja | Uso | Moneda | Filas 2026 | Cuenta contable de la caja/banco |
+|---|---|---|---|---|
+| `CTA CTE SOLES` | Cuenta corriente BBVA en soles | S/ | 704 | 1041 |
+| `CTA CTE DOLARES $` | Cuenta corriente BBVA en dólares | US$ | 101 con datos | 1041 |
+| `EFECTIVO` | Caja chica | S/ | 318 | 1011 |
+| `TC` | Tipo de cambio diario compra/venta desde 2021-09-01 | — | 3 020 | — |
+
+Hojas ocultas (heredadas de otros años, con datos de prueba o errores `#REF!`): `educacion`, `darwin`, `darwin B`, `CTA CTE INNOVATE`, `TURISMO EMPRENDE`, `DML`, `Hoja1`, `Hoja2`. Indican que **en el pasado hubo más cuentas**, por eso el sistema debe permitir crear cuentas nuevas sin tocar código.
+
+### 2.2 Columnas de una hoja de cuenta
+
+```text
+Nº/Cheque/Operación | N# Voucher | Fecha Operación | Analítico | Ruc | Razón social | Detalle | T.C | Ingreso | Egreso | CTA | COD | (destino debe) | (destino haber)
+```
+
+| Columna | Significado | Ejemplo real |
+|---|---|---|
+| Nº/Cheque/Operación | Número de operación bancaria o cheque. Casi siempre vacío. | — |
+| N# Voucher | `MM-NNNNN`: mes + correlativo. | `01-00021` |
+| Fecha Operación | Fecha del movimiento. | 05/01/2026 |
+| Analítico | Comprobante que sustenta el movimiento: `tipo-serie-número`. | `01-FB25-25390113`, `03-EB01-516`, `DJ-001-2026`, `--` |
+| Ruc | RUC (11), DNI (8) o documento extranjero. | `20100130204` |
+| Razón social | Nombre del proveedor/cliente. Se trae del RUC. | BANCO BBVA PERU |
+| Detalle | Glosa del movimiento. | ITF, MANTENIMIENTO, VENTA DE MANGOTE DE CAUCHO |
+| T.C | Tipo de cambio. `1` en soles; el del día en dólares. | `3.368` |
+| Ingreso / Egreso | Importe. Solo uno de los dos tiene valor. | `0` / `6083` |
+| CTA | Cuenta contable de contrapartida (plan contable). | `40181` |
+| COD | Medio de pago, **Tabla 1 de SUNAT**. | `999`, `003`, `001`, `009` |
+| Destino debe/haber | Solo en cuentas de gasto de clase 6: amarre a clase 9 y 79. | `95` / `791` |
+
+La hoja de dólares agrega `TOTAL` (`=I+J`), `DEBE`/`HABER` y una columna de conversión (`=I/H`). También usa columnas libres para notas de pendientes (`SIN BOLETA AUN`, `ANTICIPO`, `PEND EMT BL`).
+
+### 2.3 Lo que revelan los datos
+
+- **Cada mes es un bloque.** Se repite la fila de encabezado al empezar el mes (soles: filas 2, 84, 212, 319, 467, 586…).
+- **El correlativo del voucher es por mes y compartido entre las cuentas.** En enero: dólares `01-00001…00015`, soles `01-00016…00093`, efectivo `01-00094…00150`. Lo mismo ocurre en febrero, marzo, abril, mayo y junio. Hay saltos (por ejemplo `02-00148` no existe).
+- **Un voucher puede tener varias líneas** (asiento compuesto). Ejemplo: `01-00053` agrupa en una misma fecha y proveedor (SUNAT) la renta de cuarta, la renta de quinta, ESSALUD y SNP con cuentas distintas.
+- **Movimientos más frecuentes en soles:** ITF (CTA 40181, 286 filas), ventas (12121, 202), proveedores (42121, 69), sueldos (4111, 25).
+- **Efectivo** es casi todo gasto: proveedores (42121) y declaraciones juradas de viáticos (6593 con destino 95/791).
+- **Medios de pago usados:** `001` depósito, `003` transferencia, `009` efectivo demás casos, `999` otros.
+- **Tipo de analítico:** `01` factura (322), `03` boleta (172), `02` recibo por honorarios (18), `DJ` declaración jurada (110), `--` sin comprobante (476).
+- **El tipo de cambio en dólares se digita a mano.** La hoja `TC` solo llega hasta el 01/01/2026 y ninguna fila de 2026 coincide con ella.
+- **Amarre de destino constante por cuenta:** `6593 → 95/791`, `6373 → 94/791`, `63542 → 95/791`, `6391 → 94/791`. Puede configurarse una vez en el plan contable.
+
+### 2.4 Proceso actual
+
+```mermaid
+flowchart LR
+    A([Extracto BBVA<br/>y comprobantes]) --> B[Contador abre<br/>el Excel del año]
+    B --> C{¿Qué cuenta?}
+    C -->|Soles| D[Hoja CTA CTE SOLES]
+    C -->|Dólares| E[Hoja CTA CTE DÓLARES]
+    C -->|Caja| F[Hoja EFECTIVO]
+    D & E & F --> G[Busca el último voucher<br/>del mes en las 3 hojas]
+    G --> H[Digita fila por fila:<br/>RUC, razón social, detalle,<br/>importe, CTA, COD]
+    H --> I[Busca TC del día<br/>en otra fuente]
+    I --> J[Revisa a ojo<br/>duplicados y errores]
+    J --> K([Pasa al sistema contable])
+
+    classDef manual fill:#fde2e2,stroke:#c0392b,color:#000
+    class G,H,I,J manual
+```
+
+En rojo, los pasos manuales que el sistema automatiza.
+
+---
+
+## 3. Problemas detectados en el Excel
+
+| # | Problema | Evidencia | Cómo lo resuelve el sistema |
+|---|---|---|---|
+| 1 | El DNI pierde el cero inicial | 140 documentos de 7 dígitos (`4823957` por `04823957`) | El documento se guarda como texto; un DNI de 7 dígitos se completa con cero |
+| 2 | La razón social falla | Celdas con `#N/A` | Maestro de entidades con búsqueda y alta en la misma fila |
+| 3 | El correlativo se calcula a mano entre 3 hojas | Saltos de numeración | Correlativo mensual atómico en base de datos |
+| 4 | Errores de tipeo en el detalle | `AUTOMORIZ`, `COMSION`, `CAMBIO DE SOLE A DOLARES` | Detalles frecuentes sugeridos por proveedor |
+| 5 | El TC se digita a mano | La hoja `TC` no tiene 2026 | Tabla de tipo de cambio diario, sugerido por fecha |
+| 6 | Proveedores extranjeros con "RUC" inventado | `1639688899`, `18087220` | Tipo de documento `EXTRANJERO` sin validar dígitos |
+| 7 | Vínculos externos rotos | Rutas `Z:\Contabilidad CREES 2017\…` | No hay dependencias de archivos |
+| 8 | No hay alerta de duplicados | Mismo analítico registrado dos veces | Aviso por analítico y por RUC + fecha + importe |
+| 9 | No hay cierre de mes | Cualquiera puede editar meses pasados | Periodos abiertos y cerrados |
+| 10 | Notas sueltas en columnas libres | `SIN BOLETA AUN`, `PEND EMT BL` | Campo `observacion` y filtro de pendientes |
+| 11 | Montos con decimales flotantes | `2172.6999999999998` | `NUMERIC(14,2)` en PostgreSQL |
+
+---
+
+## 4. Qué propone el sistema
+
+```mermaid
+flowchart LR
+    A([Extracto BBVA<br/>y comprobantes]) --> B[Registro rápido<br/>elige la cuenta]
+    B --> C[Escribe RUC o nombre]
+    C --> D[Sistema completa:<br/>razón social, detalle,<br/>CTA, COD, TC, voucher]
+    D --> E[Validación en vivo<br/>errores y duplicados]
+    E --> F{¿Fila lista?}
+    F -->|Sí| G[Ctrl+Enter registra<br/>todas las filas listas]
+    F -->|No| C
+    G --> H[(PostgreSQL)]
+    H --> I[Libro de movimientos<br/>filtros y exportación]
+    H --> J[Resumen por cuenta<br/>y cierre de mes]
+
+    classDef auto fill:#d6f5ec,stroke:#16a085,color:#000
+    class D,E,G auto
+```
+
+Principios del diseño, tomados del prototipo:
+
+1. **Se escribe como en el Excel**: mismas columnas, `Tab` avanza de celda y `Enter` en COD crea la fila siguiente.
+2. **Celeste = lo llena el sistema**: voucher, razón social y T.C.
+3. **Nada se registra con errores**; los avisos se pueden aceptar.
+4. **El sistema aprende**: cada registro alimenta el historial del proveedor (detalles, CTA y COD usados).
+
+---
+
+## 5. Arquitectura
+
+### 5.1 Vista general
+
+```mermaid
+flowchart TB
+    subgraph Cliente["Navegador"]
+        U[Contador / Asistente]
+    end
+
+    subgraph Web["apps/web · Next.js + shadcn/ui"]
+        P[Páginas App Router]
+        SA[Server Actions]
+        MW[Middleware de sesión]
+    end
+
+    subgraph Api["apps/api · NestJS"]
+        G[Guard JWT + Roles]
+        M1[Módulo ledger<br/>movimientos y vouchers]
+        M2[Módulo masters<br/>entidades, plan, medios]
+        M3[Módulo periods<br/>periodos y cierre]
+        M4[Módulo exchange-rates]
+        M5[Módulo imports<br/>Excel histórico]
+        M6[Módulo reports]
+        M7[Módulo audit]
+    end
+
+    C[["packages/contracts<br/>zod + tipos compartidos"]]
+    DB[(PostgreSQL)]
+    EXT1[/"Consulta RUC y DNI"/]
+    EXT2[/"Tipo de cambio SUNAT"/]
+
+    U -->|HTTPS| P
+    P --> SA
+    MW -.-> P
+    SA -->|REST + cookie| G
+    G --> M1 & M2 & M3 & M4 & M5 & M6
+    M1 & M2 & M3 & M4 & M5 & M6 --> M7
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 -->|Prisma| DB
+    M2 -.->|opcional| EXT1
+    M4 -.->|opcional| EXT2
+    C -.- Web
+    C -.- Api
+```
+
+- **El frontend no toca la base de datos.** Todo pasa por la API.
+- **Los contratos (`packages/contracts`)** definen con zod los DTO que validan la API y los formularios.
+- **Cada módulo de la API** está separado en capas `domain / application / infrastructure / presentation` y expone solo su `index.ts`.
+
+### 5.2 Capas de un módulo
+
+```mermaid
+flowchart LR
+    subgraph ledger["modules/ledger"]
+        direction LR
+        PR[presentation<br/>controllers, DTO pipes] --> AP[application<br/>casos de uso]
+        AP --> DO[domain<br/>reglas: validar fila,<br/>numerar voucher]
+        AP --> IN[infrastructure<br/>repositorios Prisma]
+        IN --> DO
+    end
+    X[Otro módulo] -->|solo index.ts| AP
+```
+
+### 5.3 Despliegue
+
+```mermaid
+flowchart LR
+    I((Internet)) --> N[nginx :443]
+    N -->|/| W[web · Next.js<br/>systemd :3026]
+    N -->|/api| A[api · NestJS<br/>systemd :3027]
+    W -->|server actions| A
+    A --> PG[(PostgreSQL 16<br/>conciliacion_bancaria)]
+    A --> FS[(storage/<br/>importaciones)]
+```
+
+Puertos propuestos `3026` (web) y `3027` (api) porque están libres en el servidor. El dominio está por definir.
+
+---
+
+## 6. Modelo de datos
+
+### 6.1 Diagrama entidad-relación
+
+```mermaid
+erDiagram
+    usuarios ||--o{ vouchers : registra
+    usuarios ||--o{ auditoria : genera
+    cuentas_tesoreria ||--o{ vouchers : contiene
+    cuentas_contables ||--o{ cuentas_tesoreria : "se contabiliza en"
+    periodos ||--o{ vouchers : agrupa
+    periodos ||--|| correlativos : numera
+    vouchers ||--|{ movimientos : "tiene líneas"
+    entidades ||--o{ movimientos : participa
+    entidades ||--o{ detalles_frecuentes : aprende
+    cuentas_contables ||--o{ movimientos : contrapartida
+    cuentas_contables ||--o{ detalles_frecuentes : sugiere
+    medios_pago ||--o{ movimientos : "se paga con"
+    medios_pago ||--o{ detalles_frecuentes : sugiere
+    tipos_comprobante ||--o{ movimientos : sustenta
+    cuentas_contables ||--o{ cuentas_contables : "padre de"
+    cuentas_contables }o--o| cuentas_contables : "destino debe/haber"
+    tipos_cambio ||--o{ vouchers : "se usa en"
+    plantillas ||--o| entidades : usa
+    importaciones ||--o{ vouchers : origina
+
+    usuarios {
+        uuid id PK
+        string nombre
+        string email UK
+        string hash_clave
+        enum rol "ADMIN | CONTADOR | ASISTENTE | LECTOR"
+        bool activo
+    }
+    cuentas_tesoreria {
+        uuid id PK
+        string nombre "CTA CTE SOLES"
+        enum tipo "BANCO | CAJA"
+        string banco "BBVA"
+        string numero_cuenta
+        enum moneda "PEN | USD"
+        string cuenta_contable_id FK "1041 / 1011"
+        int orden
+        bool activa
+    }
+    periodos {
+        uuid id PK
+        int anio
+        int mes
+        enum estado "ABIERTO | CERRADO"
+        timestamp cerrado_en
+        uuid cerrado_por FK
+    }
+    correlativos {
+        uuid periodo_id PK
+        int ultimo_numero
+    }
+    vouchers {
+        uuid id PK
+        uuid periodo_id FK
+        int numero "único por periodo"
+        string codigo "MM-NNNNN"
+        uuid cuenta_tesoreria_id FK
+        date fecha_operacion
+        string nro_operacion
+        decimal tipo_cambio "1.000 en PEN"
+        enum estado "REGISTRADO | ANULADO"
+        uuid importacion_id FK
+        uuid creado_por FK
+    }
+    movimientos {
+        uuid id PK
+        uuid voucher_id FK
+        int linea
+        string tipo_comprobante_id FK "01 03 02 DJ o nulo"
+        string serie
+        string numero_comprobante
+        uuid entidad_id FK
+        string detalle
+        decimal ingreso "NUMERIC 14,2"
+        decimal egreso "NUMERIC 14,2"
+        string cuenta_contable_id FK
+        string medio_pago_id FK
+        string destino_debe_id FK
+        string destino_haber_id FK
+        string observacion
+        bool pendiente
+    }
+    entidades {
+        uuid id PK
+        enum tipo_documento "RUC | DNI | EXTRANJERO | SIN_DOCUMENTO"
+        string numero_documento UK
+        string razon_social
+        int usos
+    }
+    detalles_frecuentes {
+        uuid id PK
+        uuid entidad_id FK
+        string detalle
+        string cuenta_contable_id FK
+        string medio_pago_id FK
+        int usos
+        timestamp ultimo_uso
+    }
+    cuentas_contables {
+        string codigo PK "2 a 6 dígitos"
+        string denominacion
+        string padre_codigo FK
+        int nivel
+        enum tipo "BAL RNA RNF NIN RFU ORD"
+        enum clase "ACTIVO PASIVO PATRIMONIO GASTO INGRESO GESTION ORDEN"
+        bool analitica
+        bool centro_costo
+        string destino_debe FK
+        string destino_haber FK
+        bool activa
+    }
+    medios_pago {
+        string codigo PK "Tabla 1 SUNAT"
+        string descripcion
+    }
+    tipos_comprobante {
+        string codigo PK "01 02 03 DJ"
+        string descripcion
+    }
+    tipos_cambio {
+        date fecha PK
+        decimal compra
+        decimal venta
+        enum fuente "SUNAT | MANUAL"
+    }
+    plantillas {
+        uuid id PK
+        string atajo "Alt+1"
+        string etiqueta
+        uuid entidad_id FK
+        string detalle
+        string cuenta_contable_id FK
+        string medio_pago_id FK
+        decimal importe
+    }
+    importaciones {
+        uuid id PK
+        string archivo
+        enum estado "VALIDANDO | CON_OBSERVACIONES | IMPORTADO"
+        jsonb resumen
+    }
+    auditoria {
+        uuid id PK
+        uuid usuario_id FK
+        string entidad
+        string entidad_id
+        enum accion "CREAR | EDITAR | ANULAR | CERRAR | REABRIR"
+        jsonb antes
+        jsonb despues
+        timestamp creado_en
+    }
+```
+
+### 6.2 Notas del modelo
+
+- **Voucher y movimiento se separan** para soportar asientos compuestos (`01-00053` con 4 líneas). En la hoja de captura, cada fila es un movimiento; las filas consecutivas con la misma fecha y entidad pueden agruparse en un voucher.
+- **El correlativo vive en `correlativos`** y se incrementa con `UPDATE … RETURNING` dentro de la transacción, igual para las tres cuentas, como hoy en el Excel.
+- **`entidades.numero_documento` es texto**, así se conservan los ceros iniciales.
+- **El analítico se guarda en tres campos** (tipo, serie y número) para buscar duplicados de forma exacta. En pantalla se muestra unido (`01-FB25-25390113`).
+- **No se borra nada**: los vouchers se anulan (`estado = ANULADO`) y queda el registro en `auditoria`.
+- **El plan contable** se carga desde `PLAN CONTABLE.xlsx` con su jerarquía (`10 → 104 → 1041`). Solo se usan en movimientos las cuentas de último nivel.
+
+---
+
+## 7. Reglas de negocio
+
+### 7.1 Validación de una fila
+
+```mermaid
+flowchart TD
+    S([Fila en edición]) --> F{¿Fecha?}
+    F -->|No| E1[❌ Falta la fecha]
+    F -->|Sí| FP{¿Dentro del periodo?}
+    FP -->|No| W1[⚠️ Fuera del periodo]
+    FP -->|Sí| R
+    W1 --> R{¿Documento válido?<br/>RUC 11 · DNI 8 · extranjero}
+    R -->|No| E2[❌ Documento inválido]
+    R -->|Sí| RN{¿Existe en el maestro?}
+    RN -->|No y sin razón social| E3[❌ Escribe la razón social]
+    RN -->|No con razón social| W2[⚠️ Proveedor nuevo]
+    RN -->|Sí| D
+    W2 --> D{¿Detalle?}
+    D -->|No| E4[❌ Falta el detalle]
+    D -->|Sí| I{Ingreso / Egreso}
+    I -->|Ninguno| E5[❌ Falta el importe]
+    I -->|Ambos| E6[❌ No puede tener los dos]
+    I -->|Uno| C{¿CTA existe y es de último nivel?}
+    C -->|No| E7[❌ CTA inválida]
+    C -->|Sí| M{¿COD en Tabla 1 SUNAT?}
+    M -->|No| E8[❌ COD inválido]
+    M -->|Sí| DU{¿Duplicado?}
+    DU -->|Mismo analítico| W3[⚠️ Posible duplicado]
+    DU -->|Mismo RUC + fecha + importe| W4[⚠️ Confirma que no sea doble]
+    DU -->|No| OK([✅ Fila lista])
+    W3 & W4 --> OK2([⚠️ Lista con aviso])
+```
+
+Los errores (❌) **bloquean** el registro. Los avisos (⚠️) se muestran pero dejan registrar. La misma función de validación vive en `packages/contracts`, así que el navegador y la API aplican exactamente las mismas reglas.
+
+### 7.2 Ciclo de vida de una fila
+
+```mermaid
+stateDiagram-v2
+    [*] --> Borrador: Nueva fila / atajo / duplicar
+    Borrador --> ConError: falta dato o dato inválido
+    Borrador --> ConAviso: duplicado o proveedor nuevo
+    Borrador --> Lista: todo válido
+    ConError --> Borrador: corrige
+    ConAviso --> Lista: acepta aviso
+    Lista --> Registrada: Ctrl+Enter
+    ConAviso --> Registrada: Ctrl+Enter
+    Registrada --> Borrador: Editar (periodo abierto)
+    Registrada --> Anulada: Anular con motivo
+    Anulada --> [*]
+```
+
+### 7.3 Ciclo de vida de un periodo
+
+```mermaid
+stateDiagram-v2
+    [*] --> Abierto: Se crea al registrar el primer movimiento del mes
+    Abierto --> Cerrado: Cerrar mes (CONTADOR o ADMIN)
+    Cerrado --> Abierto: Reabrir (solo ADMIN, queda auditado)
+    note right of Cerrado
+        No se puede registrar,
+        editar ni anular
+    end note
+```
+
+### 7.4 Tipo de cambio
+
+- Cuentas en **PEN**: `T.C = 1.000` fijo.
+- Cuentas en **USD**: se sugiere el TC de la fecha (`tipos_cambio`) y se puede corregir. Hay que definir si se usa **compra o venta** (ver [decisiones pendientes](#15-decisiones-pendientes)).
+- Si no hay TC para esa fecha, se usa el último día hábil anterior y se muestra un aviso.
+
+### 7.5 Autocompletado
+
+| Al escribir… | El sistema completa |
+|---|---|
+| RUC/DNI conocido | Razón social. Si el proveedor tiene un solo detalle histórico, también detalle, CTA y COD. |
+| RUC nuevo | Pide la razón social (u opcionalmente la consulta en línea) y crea la entidad al registrar. |
+| Detalle conocido del proveedor | CTA y COD. |
+| CTA de gasto con amarre | Destino debe/haber (`6593 → 95 / 791`). |
+| Fecha en cuenta USD | T.C del día. |
+| Cualquier fila | Voucher `MM-NNNNN` reservado al registrar. |
+
+---
+
+## 8. Flujos principales
+
+### 8.1 Registro rápido
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Contador
+    participant W as Web (Next.js)
+    participant A as API (NestJS)
+    participant DB as PostgreSQL
+
+    C->>W: Abre Registro rápido · CTA CTE SOLES
+    W->>A: GET /periods/current, /treasury-accounts
+    A->>DB: periodo abierto + cuentas
+    A-->>W: periodo, cuentas, próximo voucher
+    C->>W: Escribe RUC "2010"
+    W->>A: GET /entities/search?q=2010
+    A-->>W: Proveedores ordenados por usos
+    C->>W: Elige BANCO BBVA PERU
+    W->>A: GET /entities/:id/frequent-details
+    A-->>W: ITF → 40181 · 999, MANTENIMIENTO → 42121 · 999
+    W-->>C: Completa detalle, CTA y COD (celeste)
+    W->>W: Valida la fila con las reglas de contracts
+    C->>W: Ctrl+Enter
+    W->>A: POST /ledger/batch [filas listas]
+    A->>DB: BEGIN
+    A->>DB: Verifica periodo ABIERTO
+    A->>DB: UPDATE correlativos RETURNING
+    A->>DB: INSERT vouchers + movimientos
+    A->>DB: UPSERT entidades + detalles_frecuentes (usos+1)
+    A->>DB: INSERT auditoria
+    A->>DB: COMMIT
+    A-->>W: Vouchers 07-00012…07-00015
+    W-->>C: Filas pasan a "Registrada"
+```
+
+### 8.2 Numeración de vouchers
+
+```mermaid
+flowchart LR
+    A[Registrar lote] --> B{¿Periodo del mes<br/>existe?}
+    B -->|No| C[Crear periodo ABIERTO<br/>y correlativo = 0]
+    B -->|Sí| D{¿ABIERTO?}
+    D -->|No| X[❌ Rechazar: mes cerrado]
+    D -->|Sí| E
+    C --> E[UPDATE correlativos<br/>SET ultimo = ultimo + n<br/>RETURNING]
+    E --> F[Asignar MM-NNNNN<br/>a cada voucher del lote]
+    F --> G[(Mismo correlativo para<br/>soles, dólares y efectivo)]
+```
+
+El `UPDATE` bloquea la fila del correlativo durante la transacción, así dos usuarios a la vez nunca obtienen el mismo número.
+
+### 8.3 Cierre de mes
+
+```mermaid
+sequenceDiagram
+    actor C as Contador
+    participant A as API
+    participant DB as PostgreSQL
+    C->>A: POST /periods/2026-07/close
+    A->>DB: ¿Movimientos con pendiente = true?
+    alt Hay pendientes
+        A-->>C: ⚠️ Lista de pendientes (SIN BOLETA AUN…)
+        C->>A: Confirmar cierre
+    end
+    A->>DB: UPDATE periodos SET estado = CERRADO
+    A->>DB: INSERT auditoria (CERRAR)
+    A-->>C: Mes cerrado · totales por cuenta
+```
+
+---
+
+## 9. Módulos y pantallas
+
+```mermaid
+flowchart LR
+    L[Login] --> R
+    subgraph App["Menú lateral"]
+        R["Registro rápido<br/>(hoja de captura)"]
+        LB[Libro de movimientos]
+        MA[Maestros]
+        RS[Resumen y cierre]
+        CF[Configuración]
+    end
+    MA --> MA1[Entidades]
+    MA --> MA2[Plan contable]
+    MA --> MA3[Medios de pago]
+    MA --> MA4[Tipo de cambio]
+    MA --> MA5[Plantillas Alt+1…6]
+    CF --> CF1[Cuentas de tesorería]
+    CF --> CF2[Usuarios y roles]
+    CF --> CF3[Importar Excel]
+```
+
+| Pantalla | Qué hace | Estado del diseño |
+|---|---|---|
+| **Registro rápido** | Hoja de captura por cuenta, autocompletado, validación, atajos, registro por lote. | Prototipo listo |
+| **Libro de movimientos** | Lista por periodo/cuenta con filtros (entidad, CTA, COD, analítico, pendientes), edición, anulación y exportación a Excel con el formato actual. | Por diseñar |
+| **Maestros** | CRUD de entidades, plan contable (importación), medios de pago, tipo de cambio y plantillas. | Por diseñar |
+| **Resumen y cierre** | Totales de ingreso, egreso y neto por cuenta y mes, saldo inicial y final, pendientes y cierre de periodo. | Por diseñar |
+| **Configuración** | Cuentas de tesorería, usuarios y roles, importación del Excel histórico. | Por diseñar |
+
+### 9.1 Atajos de teclado (del prototipo)
+
+| Tecla | Acción |
+|---|---|
+| `Tab` | Siguiente celda |
+| `Enter` en COD | Nueva fila con la fecha anterior |
+| `F4` | Copiar el valor de la celda de arriba |
+| `Alt+1…6` | Insertar plantilla frecuente (ITF BBVA, mantenimiento, comisión, peaje, combustible, viáticos) |
+| `Alt+D` | Duplicar la fila anterior |
+| `Alt+N` | Fila nueva |
+| `Ctrl+Enter` | Registrar todas las filas listas |
+
+### 9.2 Roles
+
+| Rol | Registrar | Editar / anular | Cerrar mes | Reabrir mes | Maestros | Usuarios |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| ADMIN | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CONTADOR | ✅ | ✅ | ✅ | — | ✅ | — |
+| ASISTENTE | ✅ | Solo lo suyo, mes abierto | — | — | Solo entidades | — |
+| LECTOR | — | — | — | — | — | — |
+
+---
+
+## 10. API
+
+Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/auth/login` · `/auth/logout` | Sesión |
+| `GET` | `/treasury-accounts` | Cuentas de tesorería activas |
+| `GET` | `/periods/current` · `/periods?anio=2026` | Periodo actual y lista |
+| `POST` | `/periods/:anio-:mes/close` · `/reopen` | Cerrar / reabrir |
+| `GET` | `/ledger?cuenta=&periodo=&q=&pendiente=` | Libro de movimientos paginado |
+| `POST` | `/ledger/validate` | Valida filas sin guardar (duplicados contra la BD) |
+| `POST` | `/ledger/batch` | Registra un lote de filas en una transacción |
+| `PATCH` | `/ledger/vouchers/:id` | Edita un voucher del periodo abierto |
+| `POST` | `/ledger/vouchers/:id/void` | Anula con motivo |
+| `GET` | `/ledger/export.xlsx?cuenta=&periodo=` | Exporta con el formato del Excel actual |
+| `GET` | `/entities/search?q=` | Búsqueda por documento o nombre, ordenada por usos |
+| `GET` | `/entities/:id/frequent-details` | Historial del proveedor |
+| `GET` | `/chart-of-accounts?q=&hoja=true` | Plan contable |
+| `POST` | `/chart-of-accounts/import` | Carga `PLAN CONTABLE.xlsx` |
+| `GET` | `/payment-methods` · `/voucher-types` | Catálogos SUNAT |
+| `GET` | `/exchange-rates/:fecha` | TC de una fecha |
+| `POST` | `/imports` · `GET /imports/:id` | Importación del Excel histórico |
+| `GET` | `/reports/summary?periodo=` | Totales por cuenta |
+
+---
+
+## 11. Estructura del repositorio
+
+```text
+conciliacion-bancaria/
+├── apps/
+│   ├── api/                          NestJS
+│   │   ├── prisma/
+│   │   │   ├── schema.prisma
+│   │   │   ├── migrations/
+│   │   │   └── seed.ts               catálogos SUNAT y cuentas de tesorería
+│   │   └── src/
+│   │       ├── main.ts
+│   │       ├── app.module.ts
+│   │       ├── modules/
+│   │       │   ├── identity/         login, usuarios, roles
+│   │       │   ├── ledger/           vouchers y movimientos
+│   │       │   ├── masters/          entidades, plan contable, catálogos, plantillas
+│   │       │   ├── periods/          periodos, correlativos y cierre
+│   │       │   ├── exchange-rates/
+│   │       │   ├── imports/          lectura del Excel histórico
+│   │       │   ├── reports/
+│   │       │   └── audit/
+│   │       └── shared/               prisma, config, errores, pipes zod
+│   └── web/                          Next.js + shadcn/ui
+│       ├── components.json
+│       └── src/
+│           ├── app/
+│           │   ├── (auth)/login/
+│           │   └── (app)/
+│           │       ├── quick-entry/  Registro rápido
+│           │       ├── ledger/       Libro de movimientos
+│           │       ├── masters/
+│           │       ├── summary/      Resumen y cierre
+│           │       └── settings/
+│           ├── modules/              lógica por módulo (actions.ts, hooks, componentes)
+│           ├── components/ui/        componentes de shadcn
+│           └── shared/
+├── packages/
+│   └── contracts/                    esquemas zod, enums, reglas de validación de fila
+├── public/
+│   └── documentos/                   material del cliente
+├── pnpm-workspace.yaml
+└── README.md
+```
+
+Componentes de shadcn/ui previstos: `table`, `input`, `command` (sugerencias de proveedor, CTA y COD), `popover`, `tabs` (cuentas), `select`, `dialog`, `badge` (estado de fila), `tooltip`, `sonner`, `form`, `data-table` con TanStack Table para el libro.
+
+---
+
+## 12. Instalación y desarrollo
+
+> Aún no hay código. Esta sección describe cómo se trabajará cuando exista.
+
+### Requisitos
+
+| Herramienta | Versión |
+|---|---|
+| Node.js | 18 (el del servidor; por eso NestJS 10 y Next.js 14) |
+| pnpm | 9 |
+| PostgreSQL | 16 |
+
+### Pasos
+
+```bash
+pnpm install
+createdb conciliacion_bancaria
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
+pnpm --filter @conciliacion/contracts build
+pnpm --filter api prisma migrate deploy
+pnpm --filter api prisma db seed
+pnpm dev
+```
+
+### Variables de entorno
+
+| App | Variable | Uso |
+|---|---|---|
+| api | `DATABASE_URL` | `postgresql://usuario:clave@localhost:5432/conciliacion_bancaria` |
+| api | `AUTH_SECRET` | Firma del JWT |
+| api | `PORT` | `3027` |
+| api | `PERUDEVS_TOKEN` | Opcional: consulta de RUC/DNI |
+| web | `API_URL` | `http://127.0.0.1:3027` |
+| web | `AUTH_SECRET` | Mismo secreto para validar la sesión en el middleware |
+| web | `APP_URL` | URL pública |
+
+Los `.env` **no se suben al repositorio**.
+
+---
+
+## 13. Migración del Excel histórico
+
+Para no empezar de cero, se importa enero–junio de 2026 desde el modelo.
+
+```mermaid
+flowchart TD
+    A[Subir MODELO DE CONCILIACION BANCOS.xlsx] --> B[Leer hojas visibles:<br/>SOLES, DÓLARES, EFECTIVO, TC]
+    B --> C[Saltar filas de encabezado<br/>que separan los meses]
+    C --> D[Normalizar:<br/>fecha serial → date<br/>DNI de 7 dígitos → 0 + DNI<br/>analítico → tipo, serie, número<br/>montos → 2 decimales]
+    D --> E[Agrupar líneas con el mismo voucher]
+    E --> F{Validar cada fila}
+    F -->|CTA inexistente, #N/A,<br/>documento inválido| G[Reporte de observaciones]
+    F -->|OK| H[Vista previa por cuenta y mes<br/>con totales]
+    G --> H
+    H --> I{¿Contador confirma?}
+    I -->|No| A
+    I -->|Sí| J[Insertar en una transacción<br/>respetando los vouchers originales]
+    J --> K[Poblar entidades y<br/>detalles_frecuentes con usos reales]
+    K --> L[Ajustar correlativos<br/>al último número de cada mes]
+```
+
+Gracias a la importación, el autocompletado arranca con el historial real: por ejemplo, BANCO BBVA PERU con sus detalles ITF, MANTENIMIENTO y COMISIÓN.
+
+---
+
+## 14. Hoja de ruta
+
+```mermaid
+flowchart LR
+    F0[Fase 0<br/>Análisis y README] --> F1
+    F1[Fase 1<br/>Monorepo, auth,<br/>Prisma, catálogos,<br/>plan contable] --> F2
+    F2[Fase 2<br/>Registro rápido<br/>+ validación<br/>+ correlativo] --> F3
+    F3[Fase 3<br/>Libro de movimientos<br/>edición, anulación,<br/>exportación Excel] --> F4
+    F4[Fase 4<br/>Maestros y<br/>tipo de cambio] --> F5
+    F5[Fase 5<br/>Importación del<br/>Excel histórico] --> F6
+    F6[Fase 6<br/>Resumen, saldos<br/>y cierre de mes] --> F7
+    F7[Fase 7<br/>Conciliación contra<br/>extracto bancario] --> F8[Fase 8<br/>QA y despliegue]
+
+    style F0 fill:#d6f5ec,stroke:#16a085,color:#000
+    style F7 stroke-dasharray: 5 5
+```
+
+La fase 7 (en línea punteada) depende de una decisión pendiente.
+
+---
+
+## 15. Decisiones pendientes
+
+Hay que confirmarlas con el cliente antes de implementar la fase afectada.
+
+| # | Pregunta | Por qué importa | Fase |
+|---|---|---|---|
+| 1 | ¿Quieren **conciliar contra el extracto bancario** (importar el CSV/Excel del BBVA y cruzarlo), o "conciliación" es solo el libro de bancos? | El Excel actual no compara contra el banco; sería un módulo nuevo. | 7 |
+| 2 | En dólares, ¿el TC es **compra o venta** SUNAT? ¿De qué fuente lo sacan hoy? | En 2026 se digita a mano y no coincide con la hoja `TC`. | 4 |
+| 3 | ¿Los importes en dólares se guardan en US$ y se convierten a S/ para la contabilidad? | La hoja de dólares tiene columnas `TOTAL`, `DEBE/HABER` y `=I/H` usadas de forma irregular. | 2 |
+| 4 | ¿Hacia qué sistema contable se exporta y en qué formato? | El plan contable tiene formato de importación (`COD_CTA`, `DEN_CTA`, `TIP_CTA`, `FLAG_CUENTA_ANALITICA`…). | 3 |
+| 5 | ¿Cuál es el saldo inicial de cada cuenta al 01/01/2026? | Hace falta para el resumen y los saldos. | 6 |
+| 6 | ¿Cuántos usuarios hay y quién cierra el mes? | Define los roles. | 1 |
+| 7 | ¿Se reactivan las cuentas ocultas (INNOVATE, TURISMO EMPRENDE, DML)? | Hoy son hojas ocultas con datos de otros años. | 1 |
+| 8 | ¿Dominio de publicación? | nginx y certificados. | 8 |
+| 9 | ¿Consulta automática de RUC/DNI (PeruDevs, con costo por consulta)? | Ahorra digitar razones sociales nuevas. | 4 |
+| 10 | ¿Se adjunta el comprobante (PDF/imagen) al movimiento? | Requiere almacenamiento de archivos. | 3 |
+
+---
+
+## 16. Convenciones
+
+- **Commits** convencionales en español (`feat:`, `fix:`, `docs:`…), uno por archivo.
+- **Nombres de archivos y carpetas en inglés** (`quick-entry/`, `ledger.service.ts`); **identificadores, textos de la UI y documentación en español**.
+- **TypeScript estricto**, sin `any`.
+- **Sin comentarios en el código**, sin emojis en el frontend y sin `placeholder` en los inputs (el prototipo los usa; en la implementación se reemplazan por etiquetas y ayudas).
+- **No se elimina información**: los registros se anulan o se desactivan.
+- **Montos** con `NUMERIC(14,2)` y tipo de cambio con `NUMERIC(10,3)`; nunca `float`.
+- **Fechas** en zona `America/Lima`.
