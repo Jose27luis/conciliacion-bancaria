@@ -30,7 +30,7 @@ export function PasswordDialog({ usuario }: { usuario: Usuario }) {
         </DialogHeader>
         <form action={despachar} className="grid gap-4" noValidate>
           <FormAlert estado={estado} />
-          <Field id={id} etiqueta="Nueva contraseña" ayuda="De 10 a 72 caracteres." error={errorDe(estado, "password")}>
+          <Field id={id} etiqueta="Nueva contraseña" ayuda="De 8 a 72 caracteres." error={errorDe(estado, "password")}>
             <Input id={id} name="password" type="password" required autoComplete="new-password" />
           </Field>
           <DialogFooter>
