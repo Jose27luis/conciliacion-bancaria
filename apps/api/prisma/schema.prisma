@@ -50,18 +50,40 @@ enum AccionAuditoria {
   DESACTIVAR
   IMPORTAR
   CAMBIAR_PASSWORD
+  REGISTRAR
+  ANULAR
+  CERRAR
+  REABRIR
+}
+
+enum EstadoPeriodo {
+  ABIERTO
+  CERRADO
+}
+
+enum EstadoVoucher {
+  REGISTRADO
+  ANULADO
+}
+
+enum TipoDocumentoEntidad {
+  RUC
+  DNI
+  EXTRANJERO
 }
 
 model Usuario {
-  id           String      @id @default(uuid()) @db.Uuid
-  nombre       String      @db.VarChar(120)
-  email        String      @unique @db.VarChar(160)
-  passwordHash String      @map("password_hash")
-  rol          Rol
-  activo       Boolean     @default(true)
-  creadoEn     DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
-  auditoria    Auditoria[]
+  id               String      @id @default(uuid()) @db.Uuid
+  nombre           String      @db.VarChar(120)
+  email            String      @unique @db.VarChar(160)
+  passwordHash     String      @map("password_hash")
+  rol              Rol
+  activo           Boolean     @default(true)
+  creadoEn         DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn    DateTime    @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  auditoria        Auditoria[]
+  vouchers         Voucher[]
+  periodosCerrados Periodo[]
 
   @@map("usuarios")
 }
@@ -83,13 +105,15 @@ model CuentaContable {
   creadoEn           DateTime            @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn      DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  padre             CuentaContable?   @relation("Jerarquia", fields: [padreCodigo], references: [codigo])
-  hijas             CuentaContable[]  @relation("Jerarquia")
-  destinoDebe       CuentaContable?   @relation("DestinoDebe", fields: [destinoDebeCodigo], references: [codigo])
-  origenesDebe      CuentaContable[]  @relation("DestinoDebe")
-  destinoHaber      CuentaContable?   @relation("DestinoHaber", fields: [destinoHaberCodigo], references: [codigo])
-  origenesHaber     CuentaContable[]  @relation("DestinoHaber")
-  cuentasTesoreria  CuentaTesoreria[]
+  padre              CuentaContable?    @relation("Jerarquia", fields: [padreCodigo], references: [codigo])
+  hijas              CuentaContable[]   @relation("Jerarquia")
+  destinoDebe        CuentaContable?    @relation("DestinoDebe", fields: [destinoDebeCodigo], references: [codigo])
+  origenesDebe       CuentaContable[]   @relation("DestinoDebe")
+  destinoHaber       CuentaContable?    @relation("DestinoHaber", fields: [destinoHaberCodigo], references: [codigo])
+  origenesHaber      CuentaContable[]   @relation("DestinoHaber")
+  cuentasTesoreria   CuentaTesoreria[]
+  lineas             LineaVoucher[]
+  detallesFrecuentes DetalleFrecuente[]
 
   @@index([padreCodigo])
   @@index([deMovimiento, activa])
@@ -101,6 +125,9 @@ model MedioPago {
   descripcion String  @db.VarChar(250)
   activo      Boolean @default(true)
 
+  vouchers           Voucher[]
+  detallesFrecuentes DetalleFrecuente[]
+
   @@map("medios_pago")
 }
 
@@ -108,6 +135,8 @@ model TipoComprobante {
   codigo      String  @id @db.VarChar(4)
   descripcion String  @db.VarChar(120)
   activo      Boolean @default(true)
+
+  vouchers Voucher[]
 
   @@map("tipos_comprobante")
 }
@@ -126,8 +155,111 @@ model CuentaTesoreria {
   actualizadoEn        DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
   cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
+  vouchers       Voucher[]
 
   @@map("cuentas_tesoreria")
+}
+
+model Periodo {
+  id            String        @id @default(uuid()) @db.Uuid
+  anio          Int           @db.SmallInt
+  mes           Int           @db.SmallInt
+  estado        EstadoPeriodo @default(ABIERTO)
+  ultimoNumero  Int           @default(0) @map("ultimo_numero")
+  cerradoEn     DateTime?     @map("cerrado_en") @db.Timestamptz(3)
+  cerradoPorId  String?       @map("cerrado_por_id") @db.Uuid
+  creadoEn      DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  cerradoPor Usuario?  @relation(fields: [cerradoPorId], references: [id])
+  vouchers   Voucher[]
+
+  @@unique([anio, mes])
+  @@map("periodos")
+}
+
+model Entidad {
+  id              String               @id @default(uuid()) @db.Uuid
+  tipoDocumento   TipoDocumentoEntidad @map("tipo_documento")
+  numeroDocumento String               @unique @map("numero_documento") @db.VarChar(15)
+  razonSocial     String               @map("razon_social") @db.VarChar(200)
+  usos            Int                  @default(0)
+  creadoEn        DateTime             @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn   DateTime             @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  vouchers Voucher[]
+  detalles DetalleFrecuente[]
+
+  @@index([usos])
+  @@map("entidades")
+}
+
+model DetalleFrecuente {
+  id                   String   @id @default(uuid()) @db.Uuid
+  entidadId            String   @map("entidad_id") @db.Uuid
+  detalle              String   @db.VarChar(250)
+  detalleNormalizado   String   @map("detalle_normalizado") @db.VarChar(250)
+  cuentaContableCodigo String   @map("cuenta_contable_codigo") @db.VarChar(8)
+  medioPagoCodigo      String   @map("medio_pago_codigo") @db.VarChar(3)
+  usos                 Int      @default(0)
+  ultimoUso            DateTime @default(now()) @map("ultimo_uso") @db.Timestamptz(3)
+
+  entidad        Entidad        @relation(fields: [entidadId], references: [id])
+  cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
+  medioPago      MedioPago      @relation(fields: [medioPagoCodigo], references: [codigo])
+
+  @@unique([entidadId, detalleNormalizado])
+  @@map("detalles_frecuentes")
+}
+
+model Voucher {
+  id                    String        @id @default(uuid()) @db.Uuid
+  periodoId             String        @map("periodo_id") @db.Uuid
+  numero                Int
+  cuentaTesoreriaId     String        @map("cuenta_tesoreria_id") @db.Uuid
+  fechaOperacion        DateTime      @map("fecha_operacion") @db.Date
+  nroOperacion          String?       @map("nro_operacion") @db.VarChar(30)
+  entidadId             String        @map("entidad_id") @db.Uuid
+  tipoComprobanteCodigo String?       @map("tipo_comprobante_codigo") @db.VarChar(4)
+  serie                 String?       @db.VarChar(8)
+  numeroComprobante     String?       @map("numero_comprobante") @db.VarChar(12)
+  medioPagoCodigo       String        @map("medio_pago_codigo") @db.VarChar(3)
+  tipoCambio            Decimal       @map("tipo_cambio") @db.Decimal(10, 3)
+  estado                EstadoVoucher @default(REGISTRADO)
+  motivoAnulacion       String?       @map("motivo_anulacion") @db.VarChar(250)
+  creadoPorId           String        @map("creado_por_id") @db.Uuid
+  creadoEn              DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn         DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  periodo         Periodo          @relation(fields: [periodoId], references: [id])
+  cuentaTesoreria CuentaTesoreria  @relation(fields: [cuentaTesoreriaId], references: [id])
+  entidad         Entidad          @relation(fields: [entidadId], references: [id])
+  tipoComprobante TipoComprobante? @relation(fields: [tipoComprobanteCodigo], references: [codigo])
+  medioPago       MedioPago        @relation(fields: [medioPagoCodigo], references: [codigo])
+  creadoPor       Usuario          @relation(fields: [creadoPorId], references: [id])
+  lineas          LineaVoucher[]
+
+  @@unique([periodoId, numero])
+  @@index([cuentaTesoreriaId, fechaOperacion])
+  @@index([tipoComprobanteCodigo, serie, numeroComprobante])
+  @@index([entidadId, fechaOperacion])
+  @@map("vouchers")
+}
+
+model LineaVoucher {
+  id                   String  @id @default(uuid()) @db.Uuid
+  voucherId            String  @map("voucher_id") @db.Uuid
+  linea                Int     @db.SmallInt
+  detalle              String  @db.VarChar(250)
+  ingreso              Decimal @default(0) @db.Decimal(14, 2)
+  egreso               Decimal @default(0) @db.Decimal(14, 2)
+  cuentaContableCodigo String  @map("cuenta_contable_codigo") @db.VarChar(8)
+
+  voucher        Voucher        @relation(fields: [voucherId], references: [id])
+  cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
+
+  @@unique([voucherId, linea])
+  @@map("lineas_voucher")
 }
 
 model Auditoria {
