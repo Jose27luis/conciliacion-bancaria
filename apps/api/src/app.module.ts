@@ -9,6 +9,7 @@ import { ImportsModule } from "./modules/imports";
 import { LedgerModule } from "./modules/ledger";
 import { MastersModule } from "./modules/masters";
 import { PeriodsModule } from "./modules/periods";
+import { ReportsModule } from "./modules/reports";
 import { TemplatesModule } from "./modules/templates";
 import { AppConfigModule } from "./shared/config/config.module";
 import { ApiExceptionFilter } from "./shared/http/api-exception.filter";
@@ -27,6 +28,7 @@ import { PrismaModule } from "./shared/prisma/prisma.module";
     LedgerModule,
     TemplatesModule,
     ImportsModule,
+    ReportsModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
