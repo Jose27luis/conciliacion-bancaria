@@ -1,23 +1,23 @@
 import type { Metadata } from "next";
+import { LoginBackdrop } from "@/modules/identity/ui/login-backdrop";
 import { LoginForm } from "@/modules/identity/ui/login-form";
+import { LoginShowcase } from "@/modules/identity/ui/login-showcase";
+import { MotionProvider } from "@/shared/ui/motion-provider";
 
 export const metadata: Metadata = { title: "Ingresar" };
 
 export default function LoginPage({ searchParams }: { searchParams: { expirada?: string } }) {
   return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-3">
-          <div aria-hidden="true" className="grid size-11 place-items-center rounded-xl border border-primary text-lg font-extrabold text-primary">
-            CB
-          </div>
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-primary">Registro de bancos</p>
-            <h1 className="text-2xl font-semibold tracking-tight text-white">Conciliación Bancaria</h1>
-          </div>
+    <MotionProvider>
+      <LoginBackdrop />
+      <main className="relative grid min-h-screen items-center gap-12 px-4 py-10 sm:px-8 lg:grid-cols-[1.15fr_minmax(0,28rem)] lg:px-16 xl:px-24">
+        <div className="hidden lg:block">
+          <LoginShowcase />
         </div>
-        <LoginForm sesionExpirada={searchParams.expirada === "1"} />
-      </div>
-    </main>
+        <div className="mx-auto w-full max-w-md lg:mx-0">
+          <LoginForm sesionExpirada={searchParams.expirada === "1"} />
+        </div>
+      </main>
+    </MotionProvider>
   );
 }
