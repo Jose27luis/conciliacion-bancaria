@@ -2,6 +2,7 @@ import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type {
   CuentaContable,
   CuentasContablesQuery,
+  DestinosCuentaEntrada,
   ImportacionPlanRechazo,
   ImportacionPlanResultado,
   OpcionCuentaContable,
@@ -71,6 +72,47 @@ export class ChartOfAccountsService {
         entidad: "cuenta_contable",
         entidadId: codigo,
         accion: activa ? "ACTIVAR" : "DESACTIVAR",
+      });
+      return editada;
+    });
+  }
+
+  async cambiarDestinos(codigo: string, entrada: DestinosCuentaEntrada, actor: UsuarioSesion): Promise<CuentaContable> {
+    return this.repositorio.transaccion(async (tx) => {
+      const actual = await this.repositorio.buscarCuentaContable(tx, codigo);
+      if (!actual) {
+        throw errores.noEncontrado(`La cuenta ${codigo} no existe en el plan contable.`);
+      }
+      const destinos = { destinoDebeCodigo: entrada.destinoDebeCodigo, destinoHaberCodigo: entrada.destinoHaberCodigo };
+      for (const [campo, destino] of Object.entries(destinos)) {
+        if (destino === null) {
+          continue;
+        }
+        const cuenta = await this.repositorio.buscarCuentaContable(tx, destino);
+        const mensaje =
+          destino === codigo
+            ? "La cuenta no puede ser su propio destino."
+            : !cuenta
+              ? `La cuenta ${destino} no existe en el plan contable.`
+              : !cuenta.activa
+                ? `La cuenta ${destino} está desactivada.`
+                : null;
+        if (mensaje) {
+          throw errores.validacion(mensaje, { [campo]: mensaje });
+        }
+      }
+      if ((entrada.destinoDebeCodigo === null) !== (entrada.destinoHaberCodigo === null)) {
+        const mensaje = "Indica las dos cuentas de destino, debe y haber, o ninguna.";
+        throw errores.validacion(mensaje, { destinoHaberCodigo: mensaje });
+      }
+      const editada = await this.repositorio.actualizarDestinos(tx, codigo, entrada.destinoDebeCodigo, entrada.destinoHaberCodigo);
+      await this.auditoria.registrar(tx, {
+        usuarioId: actor.id,
+        entidad: "cuenta_contable",
+        entidadId: codigo,
+        accion: "EDITAR",
+        antes: { destinoDebe: actual.destinoDebeCodigo, destinoHaber: actual.destinoHaberCodigo },
+        despues: { destinoDebe: editada.destinoDebeCodigo, destinoHaber: editada.destinoHaberCodigo },
       });
       return editada;
     });
