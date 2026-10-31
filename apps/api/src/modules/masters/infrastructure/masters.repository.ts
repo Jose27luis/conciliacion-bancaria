@@ -32,6 +32,9 @@ const camposCuentaTesoreria = {
   cuentaContableCodigo: true,
   orden: true,
   activa: true,
+  saldoApertura: true,
+  aperturaAnio: true,
+  aperturaMes: true,
   cuentaContable: { select: { denominacion: true } },
 } satisfies Prisma.CuentaTesoreriaSelect;
 
