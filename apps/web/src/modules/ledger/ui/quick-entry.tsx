@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Entidad, EntidadConHistorial, Hoja, OpcionCuentaContable } from "@conciliacion/contracts";
-import { MESES } from "@conciliacion/contracts/enums";
+import type { Entidad, EntidadConHistorial, Hoja, OpcionCuentaContable, Voucher } from "@conciliacion/contracts";
+import { MESES, puedeModificarVoucher, type Rol } from "@conciliacion/contracts/enums";
 import {
   centavosATexto,
   formatoVoucher,
@@ -21,9 +21,10 @@ import { Loader2, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { avisosDeLote, buscarEntidades, entidadPorDocumento, registrarLote } from "../actions";
+import { avisosDeLote, buscarEntidades, editarVoucher, entidadPorDocumento, registrarLote } from "../actions";
 import {
   aEntrada,
+  borradorDesdeVoucher,
   borradorVacio,
   esCampoDeLinea,
   estaVacio,
@@ -54,6 +55,8 @@ type Props = {
   tipos: Catalogo[];
   hoy: string;
   puedeRegistrar: boolean;
+  usuario: { id: string; rol: Rol };
+  editarId: string | null;
 };
 
 const MAXIMO_SUGERENCIAS = 8;
@@ -70,7 +73,7 @@ function fechaInicial(hoy: string, anio: number, mes: number, previa: string | u
   return hoy.startsWith(prefijo) ? hoy : `${prefijo}-01`;
 }
 
-export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy, puedeRegistrar }: Props) {
+export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy, puedeRegistrar, usuario, editarId }: Props) {
   const router = useRouter();
   const { cuenta, periodo } = hoja;
   const enSoles = cuenta.moneda === "PEN";
@@ -162,6 +165,56 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     },
     [problemas, vacios],
   );
+
+  const editables = useMemo(
+    () =>
+      new Set(
+        hoja.vouchers
+          .filter((voucher) => puedeRegistrar && periodo.estado === "ABIERTO" && voucher.estado === "REGISTRADO" && puedeModificarVoucher(usuario.rol, usuario.id, voucher.creadoPorId))
+          .map((voucher) => voucher.id),
+      ),
+    [hoja.vouchers, periodo.estado, puedeRegistrar, usuario.id, usuario.rol],
+  );
+
+  const enEdicion = useMemo(() => new Set(borradores.flatMap((borrador) => (borrador.voucherId ? [borrador.voucherId] : []))), [borradores]);
+
+  const iniciarEdicion = useCallback(
+    (voucher: Voucher) => {
+      const existente = borradores.find((borrador) => borrador.voucherId === voucher.id);
+      if (existente) {
+        setFocoPendiente({ borradorId: existente.id, campo: "detalle", linea: 0 });
+        return;
+      }
+      const borrador = borradorDesdeVoucher(voucher);
+      const documento = normalizarDocumento(voucher.entidad.numeroDocumento);
+      setEntidades((previas) => (previas[documento] ? previas : { ...previas, [documento]: { ...voucher.entidad, detalles: [] } }));
+      entidadPorDocumento(documento)
+        .then((entidad) => {
+          if (entidad) {
+            setEntidades((previas) => ({ ...previas, [documento]: entidad }));
+          }
+        })
+        .catch(() => toast.error(`No se pudo cargar el historial de ${voucher.entidad.razonSocial}.`));
+      setBorradores((actuales) => [borrador, ...actuales.filter((actual) => !estaVacio(actual))]);
+      setFocoPendiente({ borradorId: borrador.id, campo: "detalle", linea: 0 });
+    },
+    [borradores],
+  );
+
+  const edicionSolicitada = useRef(false);
+  useEffect(() => {
+    if (!cargado || !editarId || edicionSolicitada.current) {
+      return;
+    }
+    edicionSolicitada.current = true;
+    const voucher = hoja.vouchers.find((actual) => actual.id === editarId);
+    if (voucher && editables.has(voucher.id)) {
+      iniciarEdicion(voucher);
+    } else {
+      toast.error("Ese voucher no se puede editar: está anulado, en un mes cerrado o lo registró otra persona.");
+    }
+    router.replace(`/quick-entry?cuenta=${cuenta.id}&anio=${periodo.anio}&mes=${periodo.mes}`, { scroll: false });
+  }, [cargado, editarId, editables, hoja.vouchers, iniciarEdicion, router, cuenta.id, periodo.anio, periodo.mes]);
 
   const documentosPendientes = useMemo(
     () => [...new Set(borradores.map((borrador) => normalizarDocumento(borrador.documento)).filter((documento) => documento.length >= 8))],
@@ -418,37 +471,75 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
       toast.error("No hay filas listas. Corrige las filas marcadas en rojo.");
       return;
     }
+    const nuevos = listos.filter((borrador) => !borrador.voucherId);
+    const editados = listos.filter((borrador) => borrador.voucherId);
     setRegistrando(true);
     try {
-      const resultado = await registrarLote({
-        cuentaTesoreriaId: cuenta.id,
-        anio: periodo.anio,
-        mes: periodo.mes,
-        vouchers: listos.map((borrador) => aEntrada(borrador, cuenta.moneda)),
-      });
-      if (resultado.estado === "ok") {
-        const registrados = new Set(listos.map((borrador) => borrador.id));
+      const hechos = new Set<string>();
+      const registrados: string[] = [];
+      const guardados: string[] = [];
+      const fallas: Record<string, string[]> = {};
+      let mensajeError: string | null = null;
+
+      if (nuevos.length > 0) {
+        const resultado = await registrarLote({
+          cuentaTesoreriaId: cuenta.id,
+          anio: periodo.anio,
+          mes: periodo.mes,
+          vouchers: nuevos.map((borrador) => aEntrada(borrador, cuenta.moneda)),
+        });
+        if (resultado.estado === "ok") {
+          nuevos.forEach((borrador) => hechos.add(borrador.id));
+          registrados.push(...resultado.codigos);
+        } else {
+          for (const [clave, mensaje] of Object.entries(resultado.errores)) {
+            const indice = /^vouchers\.(\d+)\./.exec(clave)?.[1];
+            const borrador = indice === undefined ? undefined : nuevos[Number(indice)];
+            if (borrador) {
+              fallas[borrador.id] = [...(fallas[borrador.id] ?? []), mensaje];
+            }
+          }
+          mensajeError = resultado.mensaje;
+        }
+      }
+
+      for (const borrador of editados) {
+        if (!borrador.voucherId) {
+          continue;
+        }
+        const resultado = await editarVoucher(borrador.voucherId, aEntrada(borrador, cuenta.moneda));
+        if (resultado.estado === "ok") {
+          hechos.add(borrador.id);
+          guardados.push(...resultado.codigos);
+        } else {
+          const mensajes = Object.values(resultado.errores);
+          fallas[borrador.id] = mensajes.length > 0 ? mensajes : [resultado.mensaje];
+          mensajeError ??= resultado.mensaje;
+        }
+      }
+
+      if (hechos.size > 0) {
         setBorradores((actuales) => {
-          const quedan = actuales.filter((borrador) => !registrados.has(borrador.id));
-          const ultimo = listos[listos.length - 1];
+          const quedan = actuales.filter((borrador) => !hechos.has(borrador.id));
+          const ultimo = nuevos[nuevos.length - 1];
           return quedan.length > 0 ? quedan : [borradorVacio(fechaInicial(hoy, periodo.anio, periodo.mes, ultimo?.fechaOperacion), ultimo?.tipoCambio ?? tipoCambioInicial)];
         });
         setEntidades({});
-        const [primero] = resultado.codigos;
-        const ultimo = resultado.codigos[resultado.codigos.length - 1];
-        toast.success(resultado.codigos.length === 1 ? `Voucher ${primero ?? ""} registrado.` : `${resultado.codigos.length} vouchers registrados: ${primero ?? ""} a ${ultimo ?? ""}.`);
-        router.refresh();
-      } else {
-        const porBorrador: Record<string, string[]> = {};
-        for (const [clave, mensaje] of Object.entries(resultado.errores)) {
-          const indice = /^vouchers\.(\d+)\./.exec(clave)?.[1];
-          const borrador = indice === undefined ? undefined : listos[Number(indice)];
-          if (borrador) {
-            porBorrador[borrador.id] = [...(porBorrador[borrador.id] ?? []), mensaje];
-          }
+        const partes: string[] = [];
+        if (registrados.length === 1) {
+          partes.push(`Voucher ${registrados[0] ?? ""} registrado`);
+        } else if (registrados.length > 1) {
+          partes.push(`${registrados.length} vouchers registrados: ${registrados[0] ?? ""} a ${registrados[registrados.length - 1] ?? ""}`);
         }
-        setErroresServidor(porBorrador);
-        toast.error(resultado.mensaje);
+        if (guardados.length > 0) {
+          partes.push(`${guardados.length === 1 ? "Cambios guardados en" : "Cambios guardados en los vouchers"} ${guardados.join(", ")}`);
+        }
+        toast.success(`${partes.join(". ")}.`);
+        router.refresh();
+      }
+      setErroresServidor(fallas);
+      if (mensajeError) {
+        toast.error(mensajeError);
       }
     } catch {
       toast.error("No se pudo registrar. Revisa tu conexión e inténtalo de nuevo; las filas siguen en la hoja.");
@@ -556,7 +647,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     return null;
   };
 
-  const lineasRegistradas = hoja.vouchers.reduce((total, voucher) => total + voucher.lineas.length, 0);
+  const lineasRegistradas = hoja.vouchers.filter((voucher) => !enEdicion.has(voucher.id)).reduce((total, voucher) => total + voucher.lineas.length, 0);
   const totalesRegistrados = hoja.vouchers
     .filter((voucher) => voucher.estado === "REGISTRADO")
     .flatMap((voucher) => voucher.lineas)
@@ -569,7 +660,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
   let siguienteNumero = periodo.proximoNumero;
   let filaActual = lineasRegistradas + 1;
   const filas = borradores.map((borrador) => {
-    const delPeriodo = borrador.fechaOperacion.startsWith(prefijoPeriodo);
+    const delPeriodo = !borrador.voucherId && borrador.fechaOperacion.startsWith(prefijoPeriodo);
     const codigo = delPeriodo ? formatoVoucher(periodo.mes, siguienteNumero) : "auto";
     if (delPeriodo) {
       siguienteNumero += 1;
@@ -588,6 +679,14 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     });
   }
   const listos = conteo.ok + conteo.aviso;
+  const ediciones = borradores.filter((borrador) => borrador.voucherId && (estadoDe(borrador.id) === "ok" || estadoDe(borrador.id) === "aviso")).length;
+  const nuevosListos = listos - ediciones;
+  const textoBotonRegistro =
+    ediciones === 0
+      ? `Registrar ${listos} ${listos === 1 ? "fila lista" : "filas listas"}`
+      : nuevosListos === 0
+        ? `Guardar ${ediciones === 1 ? "cambios" : `${ediciones} vouchers editados`}`
+        : `Registrar ${nuevosListos} y guardar ${ediciones}`;
   const simbolo = enSoles ? "S/" : "US$";
   const documentoEnfocado = borradorEnfocado ? normalizarDocumento(borradorEnfocado.documento) : "";
 
@@ -610,7 +709,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
           {puedeRegistrar ? (
             <Button onClick={() => void registrar()} disabled={registrando || listos === 0 || periodo.estado === "CERRADO"} className="h-10">
               {registrando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              Registrar {listos} {listos === 1 ? "fila lista" : "filas listas"}
+              {textoBotonRegistro}
               <kbd className="ml-1 rounded bg-primary-foreground/15 px-1.5 py-0.5 text-[10px]">Ctrl+Enter</kbd>
             </Button>
           ) : null}
@@ -709,7 +808,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
             ))}
           </div>
 
-          <RegisteredRows vouchers={hoja.vouchers} />
+          <RegisteredRows vouchers={hoja.vouchers} enEdicion={enEdicion} editables={editables} alEditar={iniciarEdicion} />
 
           {filas.map(({ borrador, codigo, filaInicial }) => (
             <DraftRows
