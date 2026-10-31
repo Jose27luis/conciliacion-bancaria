@@ -617,7 +617,7 @@ flowchart LR
 |---|---|---|
 | **Registro rápido** | Hoja de captura por cuenta y mes, autocompletado, vouchers con varias líneas, validación, avisos de duplicado, atajos y registro por lote. | Implementado (fase 2) |
 | **Libro de movimientos** | Vouchers del mes con filtros (cuenta, estado y búsqueda por voucher, documento, razón social, analítico, detalle o CTA), totales por moneda, edición, anulación con motivo y exportación a Excel con las columnas del modelo. | Implementado (fase 3) |
-| **Maestros** | Proveedores (razón social y detalles frecuentes: corregir o desactivar), plan contable (importación y amarre de destino), medios de pago, tipos de comprobante y plantillas de atajos. | Implementado (fase 4) |
+| **Maestros** | Proveedores (razón social y detalles frecuentes: corregir o desactivar), plan contable (importación, creación y edición de cuentas con jerarquía automática, y amarre de destino), medios de pago, tipos de comprobante y plantillas de atajos. | Implementado (fase 4) |
 | **Resumen y cierre** | Por mes y cuenta: saldo inicial, ingresos, egresos y saldo final desde el saldo de apertura; tabla del año; estado de cada mes; cerrar (ADMIN y CONTADOR) y reabrir con motivo (ADMIN). | Implementado (fase 6) |
 | **Configuración** | Cuentas de tesorería, usuarios y roles, importación del Excel histórico. | Por diseñar |
 
@@ -660,6 +660,7 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `GET` | `/chart-of-accounts?q=&prefijo=&movimiento=&activa=` · `/chart-of-accounts/:codigo` | Plan contable paginado |
 | `GET` | `/chart-of-accounts/options` | Cuentas de movimiento activas, para autocompletar la CTA |
 | `POST` | `/chart-of-accounts/import` | Carga el Excel del plan contable |
+| `POST` `PUT` | `/chart-of-accounts` · `/chart-of-accounts/:codigo` | Crea una cuenta (padre y nivel automáticos) o edita su denominación, tipo, clase, moneda y marcas |
 | `PATCH` | `/chart-of-accounts/:codigo/activation` | Activar o desactivar cuenta |
 | `GET` `PATCH` | `/payment-methods` · `/payment-methods/:codigo/activation` | Tabla 1 SUNAT |
 | `GET` `POST` `PATCH` | `/voucher-types` · `/voucher-types/:codigo/activation` | Tipos de comprobante del analítico |
@@ -711,6 +712,7 @@ flowchart LR
 ### 10.2 Maestros y plantillas
 
 - **Proveedores**: se crean solos al registrar. En su ficha se corrige la razón social (por ejemplo los `#N/A` del Excel) y los detalles aprendidos: se puede cambiar su texto, CTA o COD, o desactivarlos para que dejen de sugerirse. El documento no se edita.
+- **Plan contable**: además de importarlo, se crean cuentas nuevas (por ejemplo `104115` bajo `10411`). La cuenta superior y el nivel salen del código; si la superior era de movimiento pasa a agrupadora, y se rechaza si la usa una cuenta de tesorería o una plantilla activa. Si se crea una cuenta intermedia (por ejemplo `3340` cuando ya existe `33404`), las subcuentas pasan a colgar de ella. El código no se edita; la denominación, tipo, clase, moneda y marcas sí.
 - **Amarre de destino**: cada cuenta de movimiento puede tener destino debe y haber (por ejemplo `6593 → 95 / 791`, `6373 → 94 / 791`). Se piden los dos o ninguno.
 - **Plantillas**: hasta 9 activas, una por tecla. Al desactivar una plantilla su tecla queda libre; al reactivarla recupera la suya si sigue libre o toma la primera disponible.
 
