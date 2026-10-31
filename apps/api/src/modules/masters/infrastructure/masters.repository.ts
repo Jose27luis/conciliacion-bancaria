@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import type { CuentasContablesQuery } from "@conciliacion/contracts";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { PrismaService, type Transaccion } from "../../../shared/prisma/prisma.service";
+import { busquedaTolerante, soloDigitos } from "../../../shared/search/text-search";
 import type { CuentaJerarquica } from "../domain/chart-of-accounts-plan";
 
 const camposCuentaContable = {
@@ -54,14 +56,14 @@ export type DatosCuentaTesoreria = {
 
 const TIEMPO_IMPORTACION_MS = 120_000;
 
+const filaCodigoSchema = z.array(z.object({ codigo: z.string() }));
+const conteoSchema = z.array(z.object({ total: z.number().int() }));
+
 function filtroCuentas(consulta: CuentasContablesQuery): Prisma.CuentaContableWhereInput {
   const condiciones: Prisma.CuentaContableWhereInput[] = [];
-  if (consulta.q) {
-    condiciones.push(
-      /^\d+$/.test(consulta.q)
-        ? { codigo: { startsWith: consulta.q } }
-        : { denominacion: { contains: consulta.q, mode: "insensitive" } },
-    );
+  const digitos = consulta.q ? soloDigitos(consulta.q) : null;
+  if (digitos) {
+    condiciones.push({ codigo: { startsWith: digitos } });
   }
   if (consulta.prefijo) {
     condiciones.push({ codigo: { startsWith: consulta.prefijo } });
@@ -80,6 +82,9 @@ export class MastersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async listarCuentasContables(consulta: CuentasContablesQuery): Promise<{ items: CuentaContableRegistro[]; total: number }> {
+    if (consulta.q && !soloDigitos(consulta.q)) {
+      return this.buscarCuentasPorTexto(consulta, consulta.q);
+    }
     const where = filtroCuentas(consulta);
     const [items, total] = await this.prisma.$transaction([
       this.prisma.cuentaContable.findMany({
@@ -92,6 +97,39 @@ export class MastersRepository {
       this.prisma.cuentaContable.count({ where }),
     ]);
     return { items, total };
+  }
+
+  private async buscarCuentasPorTexto(consulta: CuentasContablesQuery, texto: string): Promise<{ items: CuentaContableRegistro[]; total: number }> {
+    const { filtro, puntaje } = busquedaTolerante(Prisma.sql`denominacion`, texto);
+    const condiciones: Prisma.Sql[] = [filtro];
+    if (consulta.prefijo) {
+      condiciones.push(Prisma.sql`codigo LIKE ${`${consulta.prefijo}%`}`);
+    }
+    if (consulta.movimiento !== undefined) {
+      condiciones.push(Prisma.sql`de_movimiento = ${consulta.movimiento}`);
+    }
+    if (consulta.activa !== undefined) {
+      condiciones.push(Prisma.sql`activa = ${consulta.activa}`);
+    }
+    const where = Prisma.join(condiciones, " AND ");
+    const [filas, conteo] = await Promise.all([
+      this.prisma.$queryRaw`
+        SELECT codigo FROM cuentas_contables
+        WHERE ${where}
+        ORDER BY ${puntaje} DESC, codigo ASC
+        LIMIT ${consulta.porPagina} OFFSET ${(consulta.pagina - 1) * consulta.porPagina}`,
+      this.prisma.$queryRaw`SELECT count(*)::int AS total FROM cuentas_contables WHERE ${where}`,
+    ]);
+    const codigos = filaCodigoSchema.parse(filas).map((fila) => fila.codigo);
+    const registros = await this.prisma.cuentaContable.findMany({ where: { codigo: { in: codigos } }, select: camposCuentaContable });
+    const porCodigo = new Map(registros.map((registro) => [registro.codigo, registro]));
+    return {
+      items: codigos.flatMap((codigo) => {
+        const registro = porCodigo.get(codigo);
+        return registro ? [registro] : [];
+      }),
+      total: conteoSchema.parse(conteo)[0]?.total ?? 0,
+    };
   }
 
   cuentasDeMovimientoActivas(): Promise<{ codigo: string; denominacion: string }[]> {
