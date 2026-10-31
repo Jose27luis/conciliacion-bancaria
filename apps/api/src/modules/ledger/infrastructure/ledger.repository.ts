@@ -25,7 +25,15 @@ export const camposVoucher = {
   medioPago: { select: { descripcion: true } },
   lineas: {
     where: { vigente: true },
-    select: { id: true, linea: true, detalle: true, ingreso: true, egreso: true, cuentaContableCodigo: true, cuentaContable: { select: { denominacion: true } } },
+    select: {
+      id: true,
+      linea: true,
+      detalle: true,
+      ingreso: true,
+      egreso: true,
+      cuentaContableCodigo: true,
+      cuentaContable: { select: { denominacion: true, destinoDebeCodigo: true, destinoHaberCodigo: true } },
+    },
     orderBy: { linea: "asc" },
   },
 } satisfies Prisma.VoucherSelect;
