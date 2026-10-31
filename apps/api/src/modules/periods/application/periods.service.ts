@@ -17,6 +17,23 @@ export class PeriodsService {
       : { anio, mes, estado: "ABIERTO", proximoNumero: 1 };
   }
 
+  async periodoAbierto(tx: Transaccion, anio: number, mes: number): Promise<string> {
+    const periodo = await this.repositorio.obtenerOCrear(tx, anio, mes);
+    if (periodo.estado === "CERRADO") {
+      throw errores.conflicto(`${MESES[mes - 1] ?? mes} ${anio} está cerrado. No se puede registrar en ese mes.`);
+    }
+    return periodo.id;
+  }
+
+  elevarCorrelativo(tx: Transaccion, periodoId: string, minimo: number): Promise<void> {
+    return this.repositorio.elevarCorrelativo(tx, periodoId, minimo);
+  }
+
+  async numerosUsados(anio: number, mes: number): Promise<Map<number, string>> {
+    const usados = await this.repositorio.numerosUsados(anio, mes);
+    return new Map(usados.map((voucher) => [voucher.numero, voucher.cuentaTesoreria.nombre]));
+  }
+
   async reservarNumeros(tx: Transaccion, anio: number, mes: number, cantidad: number): Promise<NumerosReservados> {
     const periodo = await this.repositorio.obtenerOCrear(tx, anio, mes);
     if (periodo.estado === "CERRADO") {
