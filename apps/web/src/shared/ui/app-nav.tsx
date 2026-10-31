@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, BookText, Building2, CreditCard, Keyboard, FileText, Landmark, Table, Users, type LucideIcon } from "lucide-react";
-import type { Rol } from "@conciliacion/contracts";
+import { BookOpen, BookText, Building2, CreditCard, FileUp, Keyboard, FileText, Landmark, Table, Users, type LucideIcon } from "lucide-react";
+import { ROLES_EDITAN_MAESTROS, type Rol } from "@conciliacion/contracts/enums";
 import { cn } from "@/lib/utils";
 
 type Enlace = { href: string; etiqueta: string; icono: LucideIcon; roles?: readonly Rol[] };
@@ -31,6 +31,7 @@ const GRUPOS: Grupo[] = [
     titulo: "Configuración",
     enlaces: [
       { href: "/settings/treasury-accounts", etiqueta: "Cuentas de tesorería", icono: Landmark },
+      { href: "/settings/imports", etiqueta: "Importar Excel", icono: FileUp, roles: ROLES_EDITAN_MAESTROS },
       { href: "/settings/users", etiqueta: "Usuarios", icono: Users, roles: ["ADMIN"] },
     ],
   },
