@@ -65,7 +65,7 @@ export function UserDialog({ usuario }: { usuario?: Usuario }) {
             </Select>
           </Field>
           {usuario ? null : (
-            <Field id={`${prefijo}-password`} etiqueta="Contraseña" ayuda="De 10 a 72 caracteres." error={errorDe(estado, "password")}>
+            <Field id={`${prefijo}-password`} etiqueta="Contraseña" ayuda="De 8 a 72 caracteres." error={errorDe(estado, "password")}>
               <Input id={`${prefijo}-password`} name="password" type="password" required autoComplete="new-password" />
             </Field>
           )}
