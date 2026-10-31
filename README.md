@@ -713,6 +713,7 @@ flowchart LR
 
 - **Proveedores**: se crean solos al registrar. En su ficha se corrige la razón social (por ejemplo los `#N/A` del Excel) y los detalles aprendidos: se puede cambiar su texto, CTA o COD, o desactivarlos para que dejen de sugerirse. El documento no se edita.
 - **Plan contable**: además de importarlo, se crean cuentas nuevas (por ejemplo `104115` bajo `10411`). La cuenta superior y el nivel salen del código; si la superior era de movimiento pasa a agrupadora, y se rechaza si la usa una cuenta de tesorería o una plantilla activa. Si se crea una cuenta intermedia (por ejemplo `3340` cuando ya existe `33404`), las subcuentas pasan a colgar de ella. El código no se edita; la denominación, tipo, clase, moneda y marcas sí.
+- **Búsqueda**: los buscadores del plan contable, proveedores y libro filtran mientras se escribe, sin botón. Aceptan palabras sueltas en cualquier orden, sin tildes y con un error de tipeo por palabra (`mavisur` encuentra "Mavizur", `chica caja` encuentra "Caja Chica"); los resultados más parecidos salen primero. Las sugerencias de CTA, COD y detalle de la hoja usan la misma regla. En PostgreSQL usa las extensiones `unaccent`, `pg_trgm` y `fuzzystrmatch`, activadas por migración.
 - **Amarre de destino**: cada cuenta de movimiento puede tener destino debe y haber (por ejemplo `6593 → 95 / 791`, `6373 → 94 / 791`). Se piden los dos o ninguno.
 - **Plantillas**: hasta 9 activas, una por tecla. Al desactivar una plantilla su tecla queda libre; al reactivarla recupera la suya si sigue libre o toma la primera disponible.
 
