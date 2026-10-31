@@ -116,6 +116,10 @@ export class MastersRepository {
     await tx.cuentaContable.update({ where: { codigo }, data: datos });
   }
 
+  actualizarDestinos(tx: Transaccion, codigo: string, destinoDebeCodigo: string | null, destinoHaberCodigo: string | null): Promise<CuentaContableRegistro> {
+    return tx.cuentaContable.update({ where: { codigo }, data: { destinoDebeCodigo, destinoHaberCodigo }, select: camposCuentaContable });
+  }
+
   cambiarActivacionCuentaContable(tx: Transaccion, codigo: string, activa: boolean): Promise<CuentaContableRegistro> {
     return tx.cuentaContable.update({ where: { codigo }, data: { activa }, select: camposCuentaContable });
   }
