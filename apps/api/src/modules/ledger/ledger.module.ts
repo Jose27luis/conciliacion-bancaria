@@ -11,5 +11,6 @@ import { LedgerController } from "./presentation/ledger.controller";
   imports: [AuditModule, EntitiesModule, PeriodsModule],
   controllers: [LedgerController],
   providers: [LedgerRepository, LedgerExcelWriter, LedgerService],
+  exports: [LedgerService],
 })
 export class LedgerModule {}
