@@ -18,6 +18,14 @@ export class PeriodsRepository {
     return tx.periodo.upsert({ where: { anio_mes: { anio, mes } }, create: { anio, mes }, update: {}, select: camposPeriodo });
   }
 
+  async elevarCorrelativo(tx: Transaccion, id: string, minimo: number): Promise<void> {
+    await tx.periodo.updateMany({ where: { id, ultimoNumero: { lt: minimo } }, data: { ultimoNumero: minimo } });
+  }
+
+  numerosUsados(anio: number, mes: number): Promise<{ numero: number; cuentaTesoreria: { nombre: string } }[]> {
+    return this.prisma.voucher.findMany({ where: { periodo: { anio, mes } }, select: { numero: true, cuentaTesoreria: { select: { nombre: true } } } });
+  }
+
   incrementarCorrelativo(tx: Transaccion, id: string, cantidad: number): Promise<PeriodoRegistro> {
     return tx.periodo.update({ where: { id }, data: { ultimoNumero: { increment: cantidad } }, select: camposPeriodo });
   }
