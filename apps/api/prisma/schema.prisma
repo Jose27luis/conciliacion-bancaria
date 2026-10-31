@@ -77,6 +77,30 @@ enum TipoMovimiento {
   INGRESO
 }
 
+enum EstadoImportacion {
+  VALIDADA
+  IMPORTADA
+  DESCARTADA
+}
+
+model Importacion {
+  id            String            @id @default(uuid()) @db.Uuid
+  archivo       String            @db.VarChar(200)
+  estado        EstadoImportacion @default(VALIDADA)
+  datos         Json
+  resumen       Json
+  importados    Int?
+  creadoPorId   String            @map("creado_por_id") @db.Uuid
+  creadoEn      DateTime          @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime          @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  creadoPor Usuario   @relation(fields: [creadoPorId], references: [id])
+  vouchers  Voucher[]
+
+  @@index([creadoEn])
+  @@map("importaciones")
+}
+
 model Plantilla {
   id                   String         @id @default(uuid()) @db.Uuid
   atajo                Int?           @unique @db.SmallInt
@@ -100,17 +124,18 @@ model Plantilla {
 }
 
 model Usuario {
-  id               String      @id @default(uuid()) @db.Uuid
-  nombre           String      @db.VarChar(120)
-  email            String      @unique @db.VarChar(160)
-  passwordHash     String      @map("password_hash")
+  id               String        @id @default(uuid()) @db.Uuid
+  nombre           String        @db.VarChar(120)
+  email            String        @unique @db.VarChar(160)
+  passwordHash     String        @map("password_hash")
   rol              Rol
-  activo           Boolean     @default(true)
-  creadoEn         DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
-  actualizadoEn    DateTime    @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  activo           Boolean       @default(true)
+  creadoEn         DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn    DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(3)
   auditoria        Auditoria[]
   vouchers         Voucher[]
   periodosCerrados Periodo[]
+  importaciones    Importacion[]
 
   @@map("usuarios")
 }
@@ -258,6 +283,7 @@ model Voucher {
   tipoCambio            Decimal       @map("tipo_cambio") @db.Decimal(10, 3)
   estado                EstadoVoucher @default(REGISTRADO)
   motivoAnulacion       String?       @map("motivo_anulacion") @db.VarChar(250)
+  importacionId         String?       @map("importacion_id") @db.Uuid
   creadoPorId           String        @map("creado_por_id") @db.Uuid
   creadoEn              DateTime      @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn         DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(3)
@@ -268,6 +294,7 @@ model Voucher {
   tipoComprobante TipoComprobante? @relation(fields: [tipoComprobanteCodigo], references: [codigo])
   medioPago       MedioPago        @relation(fields: [medioPagoCodigo], references: [codigo])
   creadoPor       Usuario          @relation(fields: [creadoPorId], references: [id])
+  importacion     Importacion?     @relation(fields: [importacionId], references: [id])
   lineas          LineaVoucher[]
 
   @@unique([periodoId, numero])
