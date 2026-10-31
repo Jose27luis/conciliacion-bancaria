@@ -5,6 +5,7 @@ import { ZodSerializerInterceptor, ZodValidationPipe } from "nestjs-zod";
 import { AuditModule } from "./modules/audit";
 import { EntitiesModule } from "./modules/entities";
 import { IdentityModule } from "./modules/identity";
+import { ImportsModule } from "./modules/imports";
 import { LedgerModule } from "./modules/ledger";
 import { MastersModule } from "./modules/masters";
 import { PeriodsModule } from "./modules/periods";
@@ -25,6 +26,7 @@ import { PrismaModule } from "./shared/prisma/prisma.module";
     EntitiesModule,
     LedgerModule,
     TemplatesModule,
+    ImportsModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
