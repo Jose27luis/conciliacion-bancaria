@@ -6,7 +6,7 @@ import { Roles, UsuarioActual } from "../../identity";
 import { ApiProtegida } from "../../../shared/http/api-docs";
 import { UuidParamPipe } from "../../../shared/http/uuid-param.pipe";
 import { TreasuryAccountsService } from "../application/treasury-accounts.service";
-import { ActivacionDto, CuentasTesoreriaQueryDto, CuentaTesoreriaDto, GuardarCuentaTesoreriaDto } from "./masters.dto";
+import { ActivacionDto, AperturaCuentaDto, CuentasTesoreriaQueryDto, CuentaTesoreriaDto, GuardarCuentaTesoreriaDto } from "./masters.dto";
 
 const PARAM_ID = { name: "id", description: "Identificador de la cuenta de tesorería (UUID)" };
 
@@ -40,6 +40,19 @@ export class TreasuryAccountsController {
   @ZodResponse({ status: 200, description: "Cuenta editada", type: CuentaTesoreriaDto })
   editar(@Param("id", UuidParamPipe) id: string, @Body() entrada: GuardarCuentaTesoreriaDto, @UsuarioActual() actor: UsuarioSesion): Promise<CuentaTesoreria> {
     return this.cuentas.editar(id, entrada, actor);
+  }
+
+  @Put(":id/opening")
+  @Roles(...ROLES_EDITAN_MAESTROS)
+  @ApiParam(PARAM_ID)
+  @ApiProtegida("validacion", "noEncontrado")
+  @ApiOperation({
+    summary: "Saldo de apertura",
+    description: "Saldo de la cuenta al día 1 del mes indicado. Desde ese mes el resumen calcula saldo inicial y final sumando los movimientos registrados.",
+  })
+  @ZodResponse({ status: 200, description: "Cuenta actualizada", type: CuentaTesoreriaDto })
+  cambiarApertura(@Param("id", UuidParamPipe) id: string, @Body() entrada: AperturaCuentaDto, @UsuarioActual() actor: UsuarioSesion): Promise<CuentaTesoreria> {
+    return this.cuentas.cambiarApertura(id, entrada, actor);
   }
 
   @Patch(":id/activation")
