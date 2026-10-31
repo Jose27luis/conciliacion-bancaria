@@ -1,0 +1,12 @@
+{
+  "name": "conciliacion-bancaria",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev:api": "pnpm --filter @conciliacion/api dev",
+    "dev:web": "pnpm --filter @conciliacion/web dev",
+    "build": "pnpm --filter @conciliacion/contracts build && pnpm --filter @conciliacion/api build && pnpm --filter @conciliacion/web build",
+    "typecheck": "pnpm --filter @conciliacion/contracts build && pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  }
+}
