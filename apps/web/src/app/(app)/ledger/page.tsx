@@ -162,14 +162,14 @@ export default async function LedgerPage({ searchParams }: Props) {
                               </span>
                             ) : null}
                           </TableCell>
-                          <TableCell rowSpan={filas} className="align-top tabular-nums">
+                          <TableCell rowSpan={filas} className="whitespace-nowrap align-top tabular-nums">
                             {fechaCorta(voucher.fechaOperacion)}
                           </TableCell>
                           <TableCell rowSpan={filas} className="align-top">
                             {voucher.cuentaTesoreriaNombre}
                             {voucher.moneda === "USD" ? <span className="block text-[10px] text-muted-foreground">T.C. {voucher.tipoCambio}</span> : null}
                           </TableCell>
-                          <TableCell rowSpan={filas} className="align-top tabular-nums">
+                          <TableCell rowSpan={filas} className="whitespace-nowrap align-top tabular-nums">
                             {voucher.analitico}
                           </TableCell>
                           <TableCell rowSpan={filas} className="max-w-[220px] align-top">
