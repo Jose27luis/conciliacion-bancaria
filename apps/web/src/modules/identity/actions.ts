@@ -9,7 +9,7 @@ import {
   usuarioSchema,
 } from "@conciliacion/contracts";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { api, apiSinRespuesta, ErrorDeApi } from "@/shared/api/server-client";
 import { NOMBRE_COOKIE_SESION } from "@/shared/auth/session-token";
@@ -25,7 +25,12 @@ export async function iniciarSesion(_estado: EstadoFormulario, datos: FormData):
     return falloDeZod(entrada.error);
   }
   try {
-    const sesion = await api("/auth/login", loginRespuestaSchema, { metodo: "POST", json: entrada.data });
+    const ipCliente = headers().get("x-real-ip");
+    const sesion = await api("/auth/login", loginRespuestaSchema, {
+      metodo: "POST",
+      json: entrada.data,
+      cabeceras: ipCliente ? { "x-cliente-ip": ipCliente } : {},
+    });
     cookies().set(NOMBRE_COOKIE_SESION, sesion.token, {
       httpOnly: true,
       sameSite: "lax",
