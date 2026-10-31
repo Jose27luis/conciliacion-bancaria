@@ -1,18 +1,25 @@
 "use server";
 
 import {
+  anularVoucherSchema,
   avisosLoteSchema,
   entidadConHistorialSchema,
   entidadSchema,
   loteRegistradoSchema,
   loteVouchersSchema,
+  uuidSchema,
+  voucherEntradaSchema,
+  voucherSchema,
   type AvisoLote,
   type Entidad,
   type EntidadConHistorial,
   type LoteVouchersEntrada,
+  type VoucherEntrada,
 } from "@conciliacion/contracts";
 import { revalidatePath } from "next/cache";
 import { api, ErrorDeApi } from "@/shared/api/server-client";
+import { falloDeZod, texto, type EstadoFormulario } from "@/shared/lib/form-state";
+import { ejecutarAccion } from "@/shared/lib/run-action";
 
 export type ResultadoRegistro =
   | { estado: "ok"; codigos: string[] }
@@ -50,6 +57,36 @@ export async function avisosDeLote(lote: LoteVouchersEntrada): Promise<AvisoLote
   return respuesta.avisos;
 }
 
+export async function editarVoucher(id: string, entrada: VoucherEntrada): Promise<ResultadoRegistro> {
+  const datos = voucherEntradaSchema.safeParse(entrada);
+  if (!datos.success || !uuidSchema.safeParse(id).success) {
+    return { estado: "error", mensaje: "Los datos del voucher no son válidos. Recarga la página e inténtalo de nuevo.", errores: {} };
+  }
+  try {
+    const voucher = await api(`/ledger/vouchers/${id}`, voucherSchema, { metodo: "PUT", json: datos.data });
+    revalidatePath("/quick-entry");
+    revalidatePath("/ledger");
+    return { estado: "ok", codigos: [voucher.codigo] };
+  } catch (error: unknown) {
+    if (error instanceof ErrorDeApi) {
+      return { estado: "error", mensaje: error.cuerpo.mensaje, errores: error.cuerpo.errores ?? {} };
+    }
+    throw error;
+  }
+}
+
+export async function anularVoucher(id: string, _estado: EstadoFormulario, datos: FormData): Promise<EstadoFormulario> {
+  const entrada = anularVoucherSchema.safeParse({ motivo: texto(datos, "motivo") });
+  if (!entrada.success) {
+    return falloDeZod(entrada.error);
+  }
+  return ejecutarAccion(async () => {
+    await api(`/ledger/vouchers/${id}/void`, voucherSchema, { metodo: "POST", json: entrada.data });
+    revalidatePath("/ledger");
+    revalidatePath("/quick-entry");
+  }, "Voucher anulado.");
+}
+
 export async function registrarLote(lote: LoteVouchersEntrada): Promise<ResultadoRegistro> {
   const entrada = loteVouchersSchema.safeParse(lote);
   if (!entrada.success) {
@@ -58,6 +95,7 @@ export async function registrarLote(lote: LoteVouchersEntrada): Promise<Resultad
   try {
     const resultado = await api("/ledger/vouchers", loteRegistradoSchema, { metodo: "POST", json: entrada.data });
     revalidatePath("/quick-entry");
+    revalidatePath("/ledger");
     return { estado: "ok", codigos: resultado.vouchers.map((voucher) => voucher.codigo) };
   } catch (error: unknown) {
     if (error instanceof ErrorDeApi) {
