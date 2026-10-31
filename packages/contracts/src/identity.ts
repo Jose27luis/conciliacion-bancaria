@@ -10,9 +10,9 @@ const email = z
 
 const password = z
   .string()
-  .min(10, "La contraseña debe tener al menos 10 caracteres.")
+  .min(8, "La contraseña debe tener al menos 8 caracteres.")
   .max(72, "La contraseña no puede tener más de 72 caracteres.")
-  .describe("Contraseña, de 10 a 72 caracteres");
+  .describe("Contraseña, de 8 a 72 caracteres");
 
 const nombre = z.string().trim().min(3, "Escribe el nombre completo.").max(120).describe("Nombre completo");
 
