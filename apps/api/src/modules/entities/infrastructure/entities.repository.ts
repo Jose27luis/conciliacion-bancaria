@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import type { EntidadesQuery } from "@conciliacion/contracts";
-import type { Prisma, TipoDocumentoEntidad } from "@prisma/client";
+import { Prisma, type TipoDocumentoEntidad } from "@prisma/client";
+import { z } from "zod";
 import { PrismaService, type Transaccion } from "../../../shared/prisma/prisma.service";
+import { busquedaTolerante, soloDigitos } from "../../../shared/search/text-search";
 
 const camposEntidad = { id: true, tipoDocumento: true, numeroDocumento: true, razonSocial: true, usos: true } satisfies Prisma.EntidadSelect;
 
@@ -29,34 +31,50 @@ export type EntidadMaestroRegistro = EntidadRegistro & { detalles: DetalleMaestr
 const LIMITE_BUSQUEDA = 8;
 const LIMITE_DETALLES = 12;
 
-function filtroEntidades(consulta: string | undefined): Prisma.EntidadWhereInput {
-  const texto = consulta?.trim();
-  if (!texto) {
-    return {};
-  }
-  const digitos = texto.replace(/[\s.-]/g, "");
-  return /^\d+$/.test(digitos) ? { numeroDocumento: { startsWith: digitos } } : { razonSocial: { contains: texto, mode: "insensitive" } };
+const filaIdSchema = z.array(z.object({ id: z.string() }));
+const conteoSchema = z.array(z.object({ total: z.number().int() }));
+
+function ordenarPorIds<T extends { id: string }>(ids: string[], filas: T[]): T[] {
+  const porId = new Map(filas.map((fila) => [fila.id, fila]));
+  return ids.flatMap((id) => {
+    const fila = porId.get(id);
+    return fila ? [fila] : [];
+  });
 }
+
+const camposListado ={ ...camposEntidad, _count: { select: { detalles: { where: { activo: true } } } } } satisfies Prisma.EntidadSelect;
 
 @Injectable()
 export class EntitiesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  buscar(consulta: string): Promise<EntidadRegistro[]> {
-    return this.prisma.entidad.findMany({
-      where: filtroEntidades(consulta),
-      select: camposEntidad,
-      orderBy: [{ usos: "desc" }, { razonSocial: "asc" }],
-      take: LIMITE_BUSQUEDA,
-    });
+  async buscar(consulta: string): Promise<EntidadRegistro[]> {
+    const digitos = soloDigitos(consulta);
+    if (digitos || !consulta.trim()) {
+      return this.prisma.entidad.findMany({
+        where: digitos ? { numeroDocumento: { startsWith: digitos } } : {},
+        select: camposEntidad,
+        orderBy: [{ usos: "desc" }, { razonSocial: "asc" }],
+        take: LIMITE_BUSQUEDA,
+      });
+    }
+    const ids = await this.idsPorTexto(consulta, LIMITE_BUSQUEDA, 0);
+    return ordenarPorIds(ids, await this.prisma.entidad.findMany({ where: { id: { in: ids } }, select: camposEntidad }));
   }
 
   async listar(consulta: EntidadesQuery): Promise<{ items: (EntidadRegistro & { detallesActivos: number })[]; total: number }> {
-    const where = filtroEntidades(consulta.q);
+    const texto = consulta.q?.trim() ?? "";
+    const digitos = soloDigitos(texto);
+    if (texto && !digitos) {
+      const [ids, total] = await Promise.all([this.idsPorTexto(texto, consulta.porPagina, (consulta.pagina - 1) * consulta.porPagina), this.contarPorTexto(texto)]);
+      const filas = ordenarPorIds(ids, await this.prisma.entidad.findMany({ where: { id: { in: ids } }, select: camposListado }));
+      return { items: filas.map(({ _count, ...entidad }) => ({ ...entidad, detallesActivos: _count.detalles })), total };
+    }
+    const where: Prisma.EntidadWhereInput = digitos ? { numeroDocumento: { startsWith: digitos } } : {};
     const [filas, total] = await this.prisma.$transaction([
       this.prisma.entidad.findMany({
         where,
-        select: { ...camposEntidad, _count: { select: { detalles: { where: { activo: true } } } } },
+        select: camposListado,
         orderBy: [{ usos: "desc" }, { razonSocial: "asc" }],
         skip: (consulta.pagina - 1) * consulta.porPagina,
         take: consulta.porPagina,
@@ -64,6 +82,22 @@ export class EntitiesRepository {
       this.prisma.entidad.count({ where }),
     ]);
     return { items: filas.map(({ _count, ...entidad }) => ({ ...entidad, detallesActivos: _count.detalles })), total };
+  }
+
+  private async idsPorTexto(texto: string, limite: number, desde: number): Promise<string[]> {
+    const { filtro, puntaje } = busquedaTolerante(Prisma.sql`razon_social`, texto);
+    const filas: unknown = await this.prisma.$queryRaw`
+      SELECT id::text AS id FROM entidades
+      WHERE ${filtro}
+      ORDER BY ${puntaje} DESC, usos DESC, razon_social ASC
+      LIMIT ${limite} OFFSET ${desde}`;
+    return filaIdSchema.parse(filas).map((fila) => fila.id);
+  }
+
+  private async contarPorTexto(texto: string): Promise<number> {
+    const { filtro } = busquedaTolerante(Prisma.sql`razon_social`, texto);
+    const filas: unknown = await this.prisma.$queryRaw`SELECT count(*)::int AS total FROM entidades WHERE ${filtro}`;
+    return conteoSchema.parse(filas)[0]?.total ?? 0;
   }
 
   porDocumento(numeroDocumento: string): Promise<EntidadConDetallesRegistro | null> {
