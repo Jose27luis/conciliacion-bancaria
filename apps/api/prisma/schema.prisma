@@ -72,6 +72,33 @@ enum TipoDocumentoEntidad {
   EXTRANJERO
 }
 
+enum TipoMovimiento {
+  EGRESO
+  INGRESO
+}
+
+model Plantilla {
+  id                   String         @id @default(uuid()) @db.Uuid
+  atajo                Int?           @unique @db.SmallInt
+  etiqueta             String         @db.VarChar(40)
+  entidadId            String         @map("entidad_id") @db.Uuid
+  detalle              String         @db.VarChar(250)
+  cuentaContableCodigo String         @map("cuenta_contable_codigo") @db.VarChar(8)
+  medioPagoCodigo      String         @map("medio_pago_codigo") @db.VarChar(3)
+  analitico            String         @default("") @db.VarChar(5)
+  tipo                 TipoMovimiento @default(EGRESO)
+  importe              Decimal?       @db.Decimal(14, 2)
+  activa               Boolean        @default(true)
+  creadoEn             DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn        DateTime       @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  entidad        Entidad        @relation(fields: [entidadId], references: [id])
+  cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
+  medioPago      MedioPago      @relation(fields: [medioPagoCodigo], references: [codigo])
+
+  @@map("plantillas")
+}
+
 model Usuario {
   id               String      @id @default(uuid()) @db.Uuid
   nombre           String      @db.VarChar(120)
@@ -114,6 +141,7 @@ model CuentaContable {
   cuentasTesoreria   CuentaTesoreria[]
   lineas             LineaVoucher[]
   detallesFrecuentes DetalleFrecuente[]
+  plantillas         Plantilla[]
 
   @@index([padreCodigo])
   @@index([deMovimiento, activa])
@@ -127,6 +155,7 @@ model MedioPago {
 
   vouchers           Voucher[]
   detallesFrecuentes DetalleFrecuente[]
+  plantillas         Plantilla[]
 
   @@map("medios_pago")
 }
@@ -187,8 +216,9 @@ model Entidad {
   creadoEn        DateTime             @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn   DateTime             @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
-  vouchers Voucher[]
-  detalles DetalleFrecuente[]
+  vouchers   Voucher[]
+  detalles   DetalleFrecuente[]
+  plantillas Plantilla[]
 
   @@index([usos])
   @@map("entidades")
@@ -203,6 +233,7 @@ model DetalleFrecuente {
   medioPagoCodigo      String   @map("medio_pago_codigo") @db.VarChar(3)
   usos                 Int      @default(0)
   ultimoUso            DateTime @default(now()) @map("ultimo_uso") @db.Timestamptz(3)
+  activo               Boolean  @default(true)
 
   entidad        Entidad        @relation(fields: [entidadId], references: [id])
   cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
