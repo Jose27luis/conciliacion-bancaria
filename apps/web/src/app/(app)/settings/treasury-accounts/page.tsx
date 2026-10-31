@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cambiarActivacionCuentaTesoreria } from "@/modules/masters/actions";
 import { TreasuryAccountDialog } from "@/modules/masters/ui/treasury-account-dialog";
+import { OpeningDialog } from "@/modules/reports/ui/opening-dialog";
+import { hoyEnLima } from "@/shared/lib/dates";
 import { api } from "@/shared/api/server-client";
 import { exigirSesion } from "@/shared/auth/session";
 import { ActivationButton } from "@/shared/ui/activation-button";
@@ -49,6 +51,7 @@ export default async function TreasuryAccountsPage() {
                 <TableHead>Banco</TableHead>
                 <TableHead>Moneda</TableHead>
                 <TableHead>Cuenta contable</TableHead>
+                <TableHead className="text-right">Saldo de apertura</TableHead>
                 <TableHead>Estado</TableHead>
                 {editable ? <TableHead className="text-right">Acciones</TableHead> : null}
               </TableRow>
@@ -68,12 +71,35 @@ export default async function TreasuryAccountsPage() {
                     <span className="font-semibold tabular-nums text-white">{cuenta.cuentaContableCodigo}</span>
                     <span className="block text-xs text-muted-foreground">{cuenta.cuentaContableDenominacion}</span>
                   </TableCell>
+                  <TableCell className="text-right">
+                    {cuenta.saldoApertura !== null && cuenta.aperturaAnio !== null && cuenta.aperturaMes !== null ? (
+                      <>
+                        <span className="font-semibold tabular-nums text-white">
+                          {Number(cuenta.saldoApertura).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="block text-xs text-muted-foreground tabular-nums">
+                          al 01/{String(cuenta.aperturaMes).padStart(2, "0")}/{cuenta.aperturaAnio}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-[#ffda79]">Sin cargar</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge activo={cuenta.activa} />
                   </TableCell>
                   {editable ? (
                     <TableCell>
                       <div className="flex justify-end gap-1">
+                        <OpeningDialog
+                          cuentaId={cuenta.id}
+                          nombre={cuenta.nombre}
+                          simbolo={cuenta.moneda === "PEN" ? "S/" : "US$"}
+                          saldo={cuenta.saldoApertura}
+                          anio={cuenta.aperturaAnio}
+                          mes={cuenta.aperturaMes}
+                          mesSugerido={`${hoyEnLima().slice(0, 4)}-01`}
+                        />
                         <TreasuryAccountDialog cuenta={cuenta} cuentasContables={cuentasContables} />
                         <ActivationButton accion={cambiarActivacionCuentaTesoreria.bind(null, cuenta.id)} activo={cuenta.activa} nombre={cuenta.nombre} />
                       </div>
