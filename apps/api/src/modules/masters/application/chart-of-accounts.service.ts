@@ -4,6 +4,7 @@ import type {
   CuentasContablesQuery,
   ImportacionPlanRechazo,
   ImportacionPlanResultado,
+  OpcionCuentaContable,
   Pagina,
   UsuarioSesion,
 } from "@conciliacion/contracts";
@@ -47,6 +48,10 @@ export class ChartOfAccountsService {
   async listar(consulta: CuentasContablesQuery): Promise<Pagina<CuentaContable>> {
     const { items, total } = await this.repositorio.listarCuentasContables(consulta);
     return { items, total, pagina: consulta.pagina, porPagina: consulta.porPagina };
+  }
+
+  opciones(): Promise<OpcionCuentaContable[]> {
+    return this.repositorio.cuentasDeMovimientoActivas();
   }
 
   async obtener(codigo: string): Promise<CuentaContable> {
