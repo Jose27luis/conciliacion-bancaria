@@ -58,8 +58,8 @@ async function sembrarAdministrador(prisma: PrismaClient): Promise<void> {
   if (!nombre || !email || !password) {
     throw new Error("No hay usuarios. Define SEED_ADMIN_NOMBRE, SEED_ADMIN_EMAIL y SEED_ADMIN_PASSWORD para crear el primer administrador.");
   }
-  if (password.length < 10) {
-    throw new Error("SEED_ADMIN_PASSWORD debe tener al menos 10 caracteres.");
+  if (password.length < 8) {
+    throw new Error("SEED_ADMIN_PASSWORD debe tener al menos 8 caracteres.");
   }
   await prisma.usuario.create({
     data: { nombre, email, rol: "ADMIN", passwordHash: await bcrypt.hash(password, COSTO_HASH) },
