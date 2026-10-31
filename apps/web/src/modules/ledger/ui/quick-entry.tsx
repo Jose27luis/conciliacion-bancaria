@@ -45,6 +45,19 @@ import { SidePanels, type ObservacionHoja } from "./side-panels";
 import type { Sugerencia } from "./suggestion-bar";
 
 type Catalogo = { codigo: string; descripcion: string };
+
+export type PlantillaHoja = {
+  atajo: number;
+  etiqueta: string;
+  documento: string;
+  razonSocial: string;
+  detalle: string;
+  cuentaContableCodigo: string;
+  medioPagoCodigo: string;
+  analitico: string;
+  tipo: "EGRESO" | "INGRESO";
+  importe: string | null;
+};
 type CuentaPestana = { id: string; nombre: string; detalle: string };
 
 type Props = {
@@ -57,6 +70,7 @@ type Props = {
   puedeRegistrar: boolean;
   usuario: { id: string; rol: Rol };
   editarId: string | null;
+  plantillas: PlantillaHoja[];
 };
 
 const MAXIMO_SUGERENCIAS = 8;
@@ -73,7 +87,7 @@ function fechaInicial(hoy: string, anio: number, mes: number, previa: string | u
   return hoy.startsWith(prefijo) ? hoy : `${prefijo}-01`;
 }
 
-export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy, puedeRegistrar, usuario, editarId }: Props) {
+export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy, puedeRegistrar, usuario, editarId, plantillas }: Props) {
   const router = useRouter();
   const { cuenta, periodo } = hoja;
   const enSoles = cuenta.moneda === "PEN";
@@ -362,17 +376,42 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     }));
   };
 
-  const agregarBorrador = (despuesDe: string | null, base?: Partial<BorradorEdicion>) => {
-    const previo = despuesDe ? borradores.find((borrador) => borrador.id === despuesDe) : borradores[borradores.length - 1];
+  const agregarBorrador = (despuesDe: string | null, base?: Partial<BorradorEdicion>, campoFoco: CampoHoja = "documento") => {
+    const conDatos = borradores.filter((borrador) => !estaVacio(borrador));
+    const previo = despuesDe ? borradores.find((borrador) => borrador.id === despuesDe) : conDatos[conDatos.length - 1];
     const nuevo = {
       ...borradorVacio(fechaInicial(hoy, periodo.anio, periodo.mes, previo?.fechaOperacion), previo?.tipoCambio ?? tipoCambioInicial),
       ...base,
     };
     setBorradores((actuales) => {
-      const posicion = despuesDe ? actuales.findIndex((borrador) => borrador.id === despuesDe) : actuales.length - 1;
-      return [...actuales.slice(0, posicion + 1), nuevo, ...actuales.slice(posicion + 1)];
+      const utiles = despuesDe ? actuales : actuales.filter((borrador) => !estaVacio(borrador) || borrador.voucherId);
+      const posicion = despuesDe ? utiles.findIndex((borrador) => borrador.id === despuesDe) : utiles.length - 1;
+      return [...utiles.slice(0, posicion + 1), nuevo, ...utiles.slice(posicion + 1)];
     });
-    setFocoPendiente({ borradorId: nuevo.id, campo: "documento", linea: 0 });
+    setFocoPendiente({ borradorId: nuevo.id, campo: campoFoco, linea: 0 });
+  };
+
+  const usarPlantilla = (plantilla: PlantillaHoja) => {
+    const conPrefijo = plantilla.analitico !== SIN_COMPROBANTE && plantilla.analitico.endsWith("-");
+    agregarBorrador(
+      null,
+      {
+        documento: plantilla.documento,
+        razonSocial: plantilla.razonSocial,
+        analitico: plantilla.analitico,
+        medioPagoCodigo: plantilla.medioPagoCodigo,
+        lineas: [
+          {
+            ...lineaVacia(),
+            detalle: plantilla.detalle,
+            cuentaContableCodigo: plantilla.cuentaContableCodigo,
+            ingreso: plantilla.tipo === "INGRESO" ? plantilla.importe ?? "" : "",
+            egreso: plantilla.tipo === "EGRESO" ? plantilla.importe ?? "" : "",
+          },
+        ],
+      },
+      conPrefijo ? "analitico" : plantilla.importe ? "fechaOperacion" : plantilla.tipo === "INGRESO" ? "ingreso" : "egreso",
+    );
   };
 
   const duplicarAnterior = () => {
@@ -548,7 +587,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     }
   };
 
-  const teclearHoja = (evento: KeyboardEvent<HTMLDivElement>) => {
+  const teclearHoja = (evento: globalThis.KeyboardEvent) => {
     if (!puedeRegistrar) {
       return;
     }
@@ -561,8 +600,22 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     } else if (evento.altKey && (evento.key === "d" || evento.key === "D")) {
       evento.preventDefault();
       duplicarAnterior();
+    } else if (evento.altKey && /^[1-9]$/.test(evento.key)) {
+      const plantilla = plantillas.find((actual) => actual.atajo === Number(evento.key));
+      if (plantilla) {
+        evento.preventDefault();
+        usarPlantilla(plantilla);
+      }
     }
   };
+
+  const teclearHojaActual = useRef(teclearHoja);
+  teclearHojaActual.current = teclearHoja;
+  useEffect(() => {
+    const escuchar = (evento: globalThis.KeyboardEvent) => teclearHojaActual.current(evento);
+    window.addEventListener("keydown", escuchar);
+    return () => window.removeEventListener("keydown", escuchar);
+  }, []);
 
   const teclearCampo = (borrador: BorradorEdicion, evento: KeyboardEvent<HTMLInputElement>, campo: CampoHoja, linea: number) => {
     if (evento.key === "Enter" && !evento.ctrlKey && campo === "medioPagoCodigo") {
@@ -691,7 +744,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
   const documentoEnfocado = borradorEnfocado ? normalizarDocumento(borradorEnfocado.documento) : "";
 
   return (
-    <div className="flex flex-col gap-5" onKeyDown={teclearHoja}>
+    <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Registro de bancos</p>
@@ -746,6 +799,13 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
       {puedeRegistrar ? (
         <section aria-label="Atajos" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
           <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Atajos</span>
+          {plantillas.map((plantilla) => (
+            <Button key={plantilla.atajo} variant="outline" size="sm" onClick={() => usarPlantilla(plantilla)} title={`${plantilla.razonSocial} · ${plantilla.detalle}`}>
+              <kbd className="rounded border border-input bg-background px-1 text-[10px] text-primary">Alt+{plantilla.atajo}</kbd>
+              {plantilla.etiqueta}
+            </Button>
+          ))}
+          <span className="flex-1" />
           <Button variant="outline" size="sm" onClick={duplicarAnterior}>
             <Copy className="size-3.5" aria-hidden="true" />
             Duplicar fila anterior
