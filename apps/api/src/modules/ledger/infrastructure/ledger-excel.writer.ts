@@ -18,6 +18,8 @@ const COLUMNAS: { titulo: string; ancho: number }[] = [
   { titulo: "Egreso", ancho: 14 },
   { titulo: "CTA", ancho: 9 },
   { titulo: "COD", ancho: 7 },
+  { titulo: "Destino debe", ancho: 13 },
+  { titulo: "Destino haber", ancho: 13 },
 ];
 
 const FORMATO_IMPORTE = "#,##0.00";
@@ -75,6 +77,8 @@ export class LedgerExcelWriter {
             linea.egreso.toNumber(),
             linea.cuentaContableCodigo,
             voucher.medioPagoCodigo,
+            linea.cuentaContable.destinoDebeCodigo ?? "",
+            linea.cuentaContable.destinoHaberCodigo ?? "",
           ]);
           fila.getCell(3).numFmt = FORMATO_FECHA;
           fila.getCell(8).numFmt = FORMATO_TIPO_CAMBIO;
