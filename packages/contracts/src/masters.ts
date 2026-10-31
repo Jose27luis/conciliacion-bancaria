@@ -40,6 +40,21 @@ export type CuentasContablesQuery = z.infer<typeof cuentasContablesQuerySchema>;
 
 export const paginaCuentasContablesSchema = paginaSchema(cuentaContableSchema);
 
+export const editarCuentaContableSchema = z.object({
+  denominacion: z.string().trim().min(2, "Escribe la denominación.").max(200).describe("Nombre de la cuenta"),
+  tipo: z.enum(TIPOS_CUENTA_CONTABLE).describe("Tipo de cuenta del plan (BAL, RNA, RNF, NIN, RFU, ORD)"),
+  clase: z.enum(CLASES_CUENTA_CONTABLE).describe("Clase de la cuenta"),
+  moneda: z.enum(MONEDAS).describe("Moneda de la cuenta"),
+  analitica: z.boolean().describe("Lleva análisis por entidad"),
+  centroCosto: z.boolean().describe("Lleva centro de costo"),
+});
+export type EditarCuentaContableEntrada = z.infer<typeof editarCuentaContableSchema>;
+
+export const crearCuentaContableSchema = editarCuentaContableSchema.extend({
+  codigo: codigoCuenta,
+});
+export type CrearCuentaContableEntrada = z.infer<typeof crearCuentaContableSchema>;
+
 export const importacionPlanFilaErrorSchema = z.object({
   fila: z.number().int().describe("Número de fila en la hoja de Excel"),
   mensaje: z.string(),
