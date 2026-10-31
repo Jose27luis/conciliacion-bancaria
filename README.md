@@ -1,8 +1,8 @@
-# Conciliación Bancaria · MAVIZUR
+# Conciliación Bancaria
 
-Aplicativo web para **registrar los movimientos de bancos y caja** de MAVIZUR con la misma lógica del Excel que usa hoy el área contable, pero más rápido, validado y sin duplicados.
+Aplicativo web de **conciliación bancaria** para registrar los movimientos de bancos y caja con la misma lógica del Excel que usan hoy las áreas contables, pero más rápido, validado y sin duplicados.
 
-> Objetivo del cliente: **digitalizar el "MODELO DE CONCILIACIÓN BANCOS 2026"** para capturar datos en menos tiempo. La hoja de captura del sistema respeta las columnas del Excel; lo que el contador ya sabe (proveedor, detalle, cuenta, medio de pago, tipo de cambio) lo completa el sistema.
+> Objetivo: **digitalizar el Excel "MODELO DE CONCILIACIÓN BANCOS"** para capturar datos en menos tiempo. La hoja de captura del sistema respeta las columnas del Excel; lo que el contador ya sabe (proveedor, detalle, cuenta, medio de pago, tipo de cambio) lo completa el sistema.
 
 | | |
 |---|---|
@@ -10,7 +10,7 @@ Aplicativo web para **registrar los movimientos de bancos y caja** de MAVIZUR co
 | **Frontend** | Next.js (App Router) + shadcn/ui + Tailwind CSS |
 | **Base de datos** | PostgreSQL |
 | **Monorepo** | pnpm workspaces (`apps/api`, `apps/web`, `packages/contracts`) |
-| **Estado** | Análisis y diseño. Aún no hay código. |
+| **Estado** | Fase 1 implementada: sesión, usuarios, plan contable, catálogos SUNAT y cuentas de tesorería. |
 
 ---
 
@@ -37,13 +37,12 @@ Aplicativo web para **registrar los movimientos de bancos y caja** de MAVIZUR co
 
 ## 1. Documentos de origen
 
-Todo el material entregado por el cliente vive en [`public/documentos/`](public/documentos/).
+El material de referencia vive en [`public/documentos/`](public/documentos/).
 
 | Archivo | Qué es |
 |---|---|
 | `MODELO DE CONCILIACION BANCOS  2026.xlsx` | Libro real con el que registran hoy los movimientos de enero a junio de 2026. Es la **fuente de verdad del proceso**. |
-| `PLAN CONTABLE.xlsx` | Plan Contable General Empresarial con las cuentas propias de la empresa (1 897 cuentas). |
-| `prototipo_conciliacion bancaria.html` | Prototipo navegable de la pantalla **Registro rápido** (export de Claude Design). Abrirlo en el navegador. |
+| `PLAN CONTABLE.xlsx` | Plan Contable General Empresarial de referencia (1 897 cuentas). |
 
 ---
 
@@ -55,8 +54,8 @@ El libro tiene 12 hojas, pero solo **4 están visibles y en uso**:
 
 | Hoja | Uso | Moneda | Filas 2026 | Cuenta contable de la caja/banco |
 |---|---|---|---|---|
-| `CTA CTE SOLES` | Cuenta corriente BBVA en soles | S/ | 704 | 1041 |
-| `CTA CTE DOLARES $` | Cuenta corriente BBVA en dólares | US$ | 101 con datos | 1041 |
+| `CTA CTE SOLES` | Cuenta corriente bancaria en soles | S/ | 704 | 1041 |
+| `CTA CTE DOLARES $` | Cuenta corriente bancaria en dólares | US$ | 101 con datos | 1041 |
 | `EFECTIVO` | Caja chica | S/ | 318 | 1011 |
 | `TC` | Tipo de cambio diario compra/venta desde 2021-09-01 | — | 3 020 | — |
 
@@ -101,7 +100,7 @@ La hoja de dólares agrega `TOTAL` (`=I+J`), `DEBE`/`HABER` y una columna de con
 
 ```mermaid
 flowchart LR
-    A([Extracto BBVA<br/>y comprobantes]) --> B[Contador abre<br/>el Excel del año]
+    A([Extracto bancario<br/>y comprobantes]) --> B[Contador abre<br/>el Excel del año]
     B --> C{¿Qué cuenta?}
     C -->|Soles| D[Hoja CTA CTE SOLES]
     C -->|Dólares| E[Hoja CTA CTE DÓLARES]
@@ -142,7 +141,7 @@ En rojo, los pasos manuales que el sistema automatiza.
 
 ```mermaid
 flowchart LR
-    A([Extracto BBVA<br/>y comprobantes]) --> B[Registro rápido<br/>elige la cuenta]
+    A([Extracto bancario<br/>y comprobantes]) --> B[Registro rápido<br/>elige la cuenta]
     B --> C[Escribe RUC o nombre]
     C --> D[Sistema completa:<br/>razón social, detalle,<br/>CTA, COD, TC, voucher]
     D --> E[Validación en vivo<br/>errores y duplicados]
@@ -283,7 +282,7 @@ erDiagram
         uuid id PK
         string nombre "CTA CTE SOLES"
         enum tipo "BANCO | CAJA"
-        string banco "BBVA"
+        string banco
         string numero_cuenta
         enum moneda "PEN | USD"
         string cuenta_contable_id FK "1041 / 1011"
@@ -397,7 +396,7 @@ erDiagram
         uuid usuario_id FK
         string entidad
         string entidad_id
-        enum accion "CREAR | EDITAR | ANULAR | CERRAR | REABRIR"
+        enum accion "CREAR EDITAR ACTIVAR DESACTIVAR IMPORTAR ANULAR CERRAR REABRIR"
         jsonb antes
         jsonb despues
         timestamp creado_en
@@ -609,7 +608,7 @@ flowchart LR
 | `Tab` | Siguiente celda |
 | `Enter` en COD | Nueva fila con la fecha anterior |
 | `F4` | Copiar el valor de la celda de arriba |
-| `Alt+1…6` | Insertar plantilla frecuente (ITF BBVA, mantenimiento, comisión, peaje, combustible, viáticos) |
+| `Alt+1…6` | Insertar plantilla frecuente (configurables por el usuario) |
 | `Alt+D` | Duplicar la fila anterior |
 | `Alt+N` | Fila nueva |
 | `Ctrl+Enter` | Registrar todas las filas listas |
@@ -627,7 +626,7 @@ flowchart LR
 
 ## 10. API
 
-Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`.
+Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación interactiva se genera con **Swagger (OpenAPI)** en `/api/docs`, a partir de los decoradores de los controladores y de los DTO creados desde los esquemas zod de `packages/contracts`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -692,7 +691,7 @@ conciliacion-bancaria/
 ├── packages/
 │   └── contracts/                    esquemas zod, enums, reglas de validación de fila
 ├── public/
-│   └── documentos/                   material del cliente
+│   └── documentos/                   material de referencia
 ├── pnpm-workspace.yaml
 └── README.md
 ```
@@ -702,8 +701,6 @@ Componentes de shadcn/ui previstos: `table`, `input`, `command` (sugerencias de 
 ---
 
 ## 12. Instalación y desarrollo
-
-> Aún no hay código. Esta sección describe cómo se trabajará cuando exista.
 
 ### Requisitos
 
@@ -717,26 +714,43 @@ Componentes de shadcn/ui previstos: `table`, `input`, `command` (sugerencias de 
 
 ```bash
 pnpm install
-createdb conciliacion_bancaria
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
 pnpm --filter @conciliacion/contracts build
-pnpm --filter api prisma migrate deploy
-pnpm --filter api prisma db seed
-pnpm dev
+pnpm --filter @conciliacion/api db:generate
+pnpm --filter @conciliacion/api db:deploy
+SEED_ADMIN_NOMBRE="..." SEED_ADMIN_EMAIL="..." SEED_ADMIN_PASSWORD="..." pnpm --filter @conciliacion/api db:seed
+pnpm build
 ```
+
+La semilla carga la Tabla 1 de SUNAT (medios de pago) y los tipos de comprobante. El primer administrador solo se crea si no hay usuarios; sus datos se pasan por variables de entorno y no se guardan en ningún archivo. El plan contable se carga desde la pantalla **Plan contable → Importar plan contable**.
+
+| Comando | Qué hace |
+|---|---|
+| `pnpm dev:api` | API en modo desarrollo (`:3027`) |
+| `pnpm dev:web` | Web en modo desarrollo (`:3026`) |
+| `pnpm typecheck` | Verifica tipos de los tres paquetes |
+| `pnpm lint` | ESLint sin advertencias |
+| `pnpm build` | Compila contracts, API y web |
+
+Las migraciones nuevas se generan con `prisma migrate diff` y se aplican con `db:deploy`; no se usa `prisma migrate reset` ni `db push`.
+
+### Documentación de la API
+
+Con la API levantada, Swagger queda en `http://127.0.0.1:3027/api/docs` y el JSON de OpenAPI en `/api/docs-json`.
 
 ### Variables de entorno
 
 | App | Variable | Uso |
 |---|---|---|
-| api | `DATABASE_URL` | `postgresql://usuario:clave@localhost:5432/conciliacion_bancaria` |
-| api | `AUTH_SECRET` | Firma del JWT |
-| api | `PORT` | `3027` |
-| api | `PERUDEVS_TOKEN` | Opcional: consulta de RUC/DNI |
+| api | `DATABASE_URL` | `postgresql://usuario:clave@127.0.0.1:5432/conciliacion_bancaria?schema=public` |
+| api | `AUTH_SECRET` | Firma del JWT, mínimo 32 caracteres |
+| api | `PORT` · `HOST` | `3027` · `127.0.0.1` |
+| api | `APP_URL` | URL pública de la web |
+| api | `SEED_ADMIN_*` | Solo para la semilla del primer administrador |
 | web | `API_URL` | `http://127.0.0.1:3027` |
-| web | `AUTH_SECRET` | Mismo secreto para validar la sesión en el middleware |
-| web | `APP_URL` | URL pública |
+| web | `AUTH_SECRET` | El mismo secreto de la API, para validar la sesión en el middleware |
+| web | `APP_URL` | URL pública; si empieza con `https://` la cookie de sesión es `Secure` |
 
 Los `.env` **no se suben al repositorio**.
 
@@ -763,7 +777,7 @@ flowchart TD
     K --> L[Ajustar correlativos<br/>al último número de cada mes]
 ```
 
-Gracias a la importación, el autocompletado arranca con el historial real: por ejemplo, BANCO BBVA PERU con sus detalles ITF, MANTENIMIENTO y COMISIÓN.
+Gracias a la importación, el autocompletado arranca con el historial real de proveedores, detalles, CTA y COD.
 
 ---
 
@@ -781,6 +795,7 @@ flowchart LR
     F7[Fase 7<br/>Conciliación contra<br/>extracto bancario] --> F8[Fase 8<br/>QA y despliegue]
 
     style F0 fill:#d6f5ec,stroke:#16a085,color:#000
+    style F1 fill:#d6f5ec,stroke:#16a085,color:#000
     style F7 stroke-dasharray: 5 5
 ```
 
@@ -790,11 +805,11 @@ La fase 7 (en línea punteada) depende de una decisión pendiente.
 
 ## 15. Decisiones pendientes
 
-Hay que confirmarlas con el cliente antes de implementar la fase afectada.
+Hay que confirmarlas con el usuario antes de implementar la fase afectada.
 
 | # | Pregunta | Por qué importa | Fase |
 |---|---|---|---|
-| 1 | ¿Quieren **conciliar contra el extracto bancario** (importar el CSV/Excel del BBVA y cruzarlo), o "conciliación" es solo el libro de bancos? | El Excel actual no compara contra el banco; sería un módulo nuevo. | 7 |
+| 1 | ¿Quieren **conciliar contra el extracto bancario** (importar el CSV/Excel del banco y cruzarlo), o "conciliación" es solo el libro de bancos? | El Excel actual no compara contra el banco; sería un módulo nuevo. | 7 |
 | 2 | En dólares, ¿el TC es **compra o venta** SUNAT? ¿De qué fuente lo sacan hoy? | En 2026 se digita a mano y no coincide con la hoja `TC`. | 4 |
 | 3 | ¿Los importes en dólares se guardan en US$ y se convierten a S/ para la contabilidad? | La hoja de dólares tiene columnas `TOTAL`, `DEBE/HABER` y `=I/H` usadas de forma irregular. | 2 |
 | 4 | ¿Hacia qué sistema contable se exporta y en qué formato? | El plan contable tiene formato de importación (`COD_CTA`, `DEN_CTA`, `TIP_CTA`, `FLAG_CUENTA_ANALITICA`…). | 3 |
@@ -811,8 +826,9 @@ Hay que confirmarlas con el cliente antes de implementar la fase afectada.
 
 - **Commits** convencionales en español (`feat:`, `fix:`, `docs:`…), uno por archivo.
 - **Nombres de archivos y carpetas en inglés** (`quick-entry/`, `ledger.service.ts`); **identificadores, textos de la UI y documentación en español**.
-- **TypeScript estricto**, sin `any`.
-- **Sin comentarios en el código**, sin emojis en el frontend y sin `placeholder` en los inputs (el prototipo los usa; en la implementación se reemplazan por etiquetas y ayudas).
+- **TypeScript estricto.**
+- **Sin `any`, sin comentarios, sin emojis en el código, sin `placeholder` en los inputs y sin soluciones temporales.** La API se documenta con Swagger.
+- Las reglas completas para personas y agentes de IA están en [`AGENTS.md`](AGENTS.md) (y [`CLAUDE.md`](CLAUDE.md) las importa).
 - **No se elimina información**: los registros se anulan o se desactivan.
 - **Montos** con `NUMERIC(14,2)` y tipo de cambio con `NUMERIC(10,3)`; nunca `float`.
 - **Fechas** en zona `America/Lima`.
