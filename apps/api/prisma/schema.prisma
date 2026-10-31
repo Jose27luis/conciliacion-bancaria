@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  ADMIN
+  CONTADOR
+  ASISTENTE
+  LECTOR
+}
+
+enum Moneda {
+  PEN
+  USD
+}
+
+enum TipoCuentaTesoreria {
+  BANCO
+  CAJA
+}
+
+enum TipoCuentaContable {
+  BAL
+  RNA
+  RNF
+  NIN
+  RFU
+  ORD
+}
+
+enum ClaseCuentaContable {
+  ORDEN
+  ACTIVO
+  PASIVO
+  PATRIMONIO
+  GASTO
+  INGRESO
+  GESTION
+}
+
+enum AccionAuditoria {
+  CREAR
+  EDITAR
+  ACTIVAR
+  DESACTIVAR
+  IMPORTAR
+  CAMBIAR_PASSWORD
+}
+
+model Usuario {
+  id           String      @id @default(uuid()) @db.Uuid
+  nombre       String      @db.VarChar(120)
+  email        String      @unique @db.VarChar(160)
+  passwordHash String      @map("password_hash")
+  rol          Rol
+  activo       Boolean     @default(true)
+  creadoEn     DateTime    @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+  auditoria    Auditoria[]
+
+  @@map("usuarios")
+}
+
+model CuentaContable {
+  codigo             String              @id @db.VarChar(8)
+  denominacion       String              @db.VarChar(200)
+  padreCodigo        String?             @map("padre_codigo") @db.VarChar(8)
+  nivel              Int                 @db.SmallInt
+  deMovimiento       Boolean             @map("de_movimiento")
+  tipo               TipoCuentaContable
+  clase              ClaseCuentaContable
+  analitica          Boolean
+  centroCosto        Boolean             @map("centro_costo")
+  moneda             Moneda
+  destinoDebeCodigo  String?             @map("destino_debe_codigo") @db.VarChar(8)
+  destinoHaberCodigo String?             @map("destino_haber_codigo") @db.VarChar(8)
+  activa             Boolean             @default(true)
+  creadoEn           DateTime            @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn      DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  padre             CuentaContable?   @relation("Jerarquia", fields: [padreCodigo], references: [codigo])
+  hijas             CuentaContable[]  @relation("Jerarquia")
+  destinoDebe       CuentaContable?   @relation("DestinoDebe", fields: [destinoDebeCodigo], references: [codigo])
+  origenesDebe      CuentaContable[]  @relation("DestinoDebe")
+  destinoHaber      CuentaContable?   @relation("DestinoHaber", fields: [destinoHaberCodigo], references: [codigo])
+  origenesHaber     CuentaContable[]  @relation("DestinoHaber")
+  cuentasTesoreria  CuentaTesoreria[]
+
+  @@index([padreCodigo])
+  @@index([deMovimiento, activa])
+  @@map("cuentas_contables")
+}
+
+model MedioPago {
+  codigo      String  @id @db.VarChar(3)
+  descripcion String  @db.VarChar(250)
+  activo      Boolean @default(true)
+
+  @@map("medios_pago")
+}
+
+model TipoComprobante {
+  codigo      String  @id @db.VarChar(4)
+  descripcion String  @db.VarChar(120)
+  activo      Boolean @default(true)
+
+  @@map("tipos_comprobante")
+}
+
+model CuentaTesoreria {
+  id                   String              @id @default(uuid()) @db.Uuid
+  nombre               String              @unique @db.VarChar(60)
+  tipo                 TipoCuentaTesoreria
+  banco                String?             @db.VarChar(80)
+  numeroCuenta         String?             @map("numero_cuenta") @db.VarChar(30)
+  moneda               Moneda
+  cuentaContableCodigo String              @map("cuenta_contable_codigo") @db.VarChar(8)
+  orden                Int                 @default(0) @db.SmallInt
+  activa               Boolean             @default(true)
+  creadoEn             DateTime            @default(now()) @map("creado_en") @db.Timestamptz(3)
+  actualizadoEn        DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  cuentaContable CuentaContable @relation(fields: [cuentaContableCodigo], references: [codigo])
+
+  @@map("cuentas_tesoreria")
+}
+
+model Auditoria {
+  id        String          @id @default(uuid()) @db.Uuid
+  usuarioId String          @map("usuario_id") @db.Uuid
+  entidad   String          @db.VarChar(60)
+  entidadId String          @map("entidad_id") @db.VarChar(60)
+  accion    AccionAuditoria
+  antes     Json?
+  despues   Json?
+  creadoEn  DateTime        @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([entidad, entidadId])
+  @@index([usuarioId, creadoEn])
+  @@map("auditoria")
+}
