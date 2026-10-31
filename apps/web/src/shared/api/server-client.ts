@@ -80,3 +80,7 @@ export async function api<T>(ruta: string, esquema: z.ZodType<T>, opciones: Opci
 export async function apiSinRespuesta(ruta: string, opciones: Opciones): Promise<void> {
   await enviar(ruta, opciones);
 }
+
+export function apiArchivo(ruta: string, opciones: Opciones = {}): Promise<Response> {
+  return enviar(ruta, opciones);
+}
