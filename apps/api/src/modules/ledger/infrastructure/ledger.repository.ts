@@ -64,6 +64,7 @@ export type DatosVoucher = DatosCabecera & {
   numero: number;
   cuentaTesoreriaId: string;
   creadoPorId: string;
+  importacionId?: string;
   lineas: (DatosLinea & { linea: number })[];
 };
 
