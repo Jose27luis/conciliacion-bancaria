@@ -232,15 +232,30 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    I((Internet)) --> N[nginx :443]
-    N -->|/| W[web · Next.js<br/>systemd :3026]
-    N -->|/api| A[api · NestJS<br/>systemd :3027]
+    I((Internet)) --> CF[Cloudflare<br/>modo Full]
+    CF --> N[nginx :443<br/>Let's Encrypt]
+    N -->|/| W[web · Next.js<br/>conciliacion-bancaria-web :3026]
+    N -->|/api| A[api · NestJS<br/>conciliacion-bancaria-api :3027]
     W -->|server actions| A
     A --> PG[(PostgreSQL 16<br/>conciliacion_bancaria)]
-    A --> FS[(storage/<br/>importaciones)]
 ```
 
-Puertos propuestos `3026` (web) y `3027` (api) porque están libres en el servidor. El dominio está por definir.
+Publicado en **https://conciliacionbancaria.torresasociados.pe** (Swagger en `/api/docs`).
+
+| Pieza | Dónde |
+|---|---|
+| Servicios systemd | `conciliacion-bancaria-api` y `conciliacion-bancaria-web` |
+| Vhost nginx | `/etc/nginx/sites-available/conciliacion-bancaria` |
+| Certificado | `/etc/letsencrypt/live/conciliacionbancaria.torresasociados.pe/` (webroot `/var/www/certbot`) |
+| IP del visitante | nginx toma `CF-Connecting-IP` y la pasa como `X-Real-IP` / `X-Cliente-Ip` para limitar intentos de login por persona |
+
+Para publicar cambios:
+
+```bash
+pnpm build
+pnpm --filter @conciliacion/api db:deploy
+systemctl restart conciliacion-bancaria-api conciliacion-bancaria-web
+```
 
 ---
 
@@ -816,7 +831,6 @@ Hay que confirmarlas con el usuario antes de implementar la fase afectada.
 | 5 | ¿Cuál es el saldo inicial de cada cuenta al 01/01/2026? | Hace falta para el resumen y los saldos. | 6 |
 | 6 | ¿Cuántos usuarios hay y quién cierra el mes? | Define los roles. | 1 |
 | 7 | ¿Se reactivan las cuentas ocultas (INNOVATE, TURISMO EMPRENDE, DML)? | Hoy son hojas ocultas con datos de otros años. | 1 |
-| 8 | ¿Dominio de publicación? | nginx y certificados. | 8 |
 | 9 | ¿Consulta automática de RUC/DNI (PeruDevs, con costo por consulta)? | Ahorra digitar razones sociales nuevas. | 4 |
 | 10 | ¿Se adjunta el comprobante (PDF/imagen) al movimiento? | Requiere almacenamiento de archivos. | 3 |
 
