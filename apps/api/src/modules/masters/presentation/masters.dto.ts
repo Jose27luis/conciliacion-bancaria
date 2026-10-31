@@ -1,11 +1,13 @@
 import {
   activacionSchema,
   aperturaCuentaSchema,
+  crearCuentaContableSchema,
   crearTipoComprobanteSchema,
   cuentaContableSchema,
   cuentaTesoreriaSchema,
   cuentasContablesQuerySchema,
   destinosCuentaSchema,
+  editarCuentaContableSchema,
   guardarCuentaTesoreriaSchema,
   importacionPlanRechazoSchema,
   importacionPlanResultadoSchema,
@@ -20,6 +22,8 @@ import { z } from "zod";
 export class CuentaContableDto extends createZodDto(cuentaContableSchema) {}
 export class OpcionCuentaContableDto extends createZodDto(opcionCuentaContableSchema) {}
 export class DestinosCuentaDto extends createZodDto(destinosCuentaSchema) {}
+export class CrearCuentaContableDto extends createZodDto(crearCuentaContableSchema) {}
+export class EditarCuentaContableDto extends createZodDto(editarCuentaContableSchema) {}
 export class CuentasContablesQueryDto extends createZodDto(cuentasContablesQuerySchema) {}
 export class PaginaCuentasContablesDto extends createZodDto(paginaCuentasContablesSchema) {}
 export class ImportacionPlanResultadoDto extends createZodDto(importacionPlanResultadoSchema) {}
