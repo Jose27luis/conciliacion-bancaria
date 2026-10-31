@@ -1,5 +1,6 @@
 import {
   activacionSchema,
+  aperturaCuentaSchema,
   crearTipoComprobanteSchema,
   cuentaContableSchema,
   cuentaTesoreriaSchema,
@@ -29,6 +30,7 @@ export class CrearTipoComprobanteDto extends createZodDto(crearTipoComprobanteSc
 export class CuentaTesoreriaDto extends createZodDto(cuentaTesoreriaSchema) {}
 export class GuardarCuentaTesoreriaDto extends createZodDto(guardarCuentaTesoreriaSchema) {}
 export class ActivacionDto extends createZodDto(activacionSchema) {}
+export class AperturaCuentaDto extends createZodDto(aperturaCuentaSchema) {}
 export class CuentasTesoreriaQueryDto extends createZodDto(
   z.object({
     activas: z
