@@ -10,7 +10,7 @@ Aplicativo web de **conciliación bancaria** para registrar los movimientos de b
 | **Frontend** | Next.js (App Router) + shadcn/ui + Tailwind CSS |
 | **Base de datos** | PostgreSQL |
 | **Monorepo** | pnpm workspaces (`apps/api`, `apps/web`, `packages/contracts`) |
-| **Estado** | Fases 1 a 4 implementadas: sesión, usuarios, plan contable con amarres, catálogos SUNAT, cuentas de tesorería, Registro rápido, Libro de movimientos (edición, anulación y exportación a Excel), proveedores y plantillas de atajos. |
+| **Estado** | Fases 1 a 5 implementadas: sesión, usuarios, plan contable con amarres, catálogos SUNAT, cuentas de tesorería, Registro rápido, Libro de movimientos (edición, anulación y exportación a Excel), proveedores, plantillas de atajos e importación del Excel histórico. |
 
 ---
 
@@ -392,8 +392,11 @@ erDiagram
     importaciones {
         uuid id PK
         string archivo
-        enum estado "VALIDANDO | CON_OBSERVACIONES | IMPORTADO"
-        jsonb resumen
+        enum estado "VALIDADA | IMPORTADA | DESCARTADA"
+        jsonb datos "vouchers válidos de la vista previa"
+        jsonb resumen "hojas, observaciones y amarres"
+        int importados
+        uuid creado_por_id FK
     }
     auditoria {
         uuid id PK
@@ -666,8 +669,10 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `PUT` `PATCH` | `/entities/:id/details/:detalleId` · `/activation` | Corrige o desactiva un detalle frecuente |
 | `PUT` | `/chart-of-accounts/:codigo/destinations` | Amarre de destino debe y haber |
 | `GET` `POST` `PUT` `PATCH` | `/templates` · `/templates/:id` · `/templates/:id/activation` | Plantillas de atajos Alt+1…9 |
+| `GET` `POST` | `/imports` · `/imports/:id` | Historial y subida del Excel con vista previa |
+| `POST` | `/imports/:id/confirm` · `/imports/:id/discard` | Confirmar con la cuenta de cada hoja, o descartar |
 
-**Previstos** para las siguientes fases: importación del Excel histórico, cierre y reapertura de periodos y resumen por cuenta.
+**Previstos** para la siguiente fase: saldos por cuenta, resumen mensual y cierre y reapertura de periodos.
 
 ### 10.1 Edición y anulación
 
@@ -725,6 +730,7 @@ conciliacion-bancaria/
 │   │       │   ├── periods/          periodos y correlativo mensual
 │   │       │   ├── entities/         proveedores y detalles frecuentes
 │   │       │   ├── templates/        plantillas de atajos Alt+1…9
+│   │       │   ├── imports/          lectura del Excel modelo, vista previa e importación
 │   │       │   └── ledger/           hoja, registro, edición, anulación y exportación a Excel
 │   │       └── shared/               prisma, config, errores, documentación Swagger
 │   └── web/                          Next.js + shadcn/ui
@@ -736,7 +742,7 @@ conciliacion-bancaria/
 │           │       ├── quick-entry/  Registro rápido
 │           │       ├── ledger/       Libro de movimientos y descarga del Excel
 │           │       ├── masters/      proveedores, plantillas, plan contable, medios de pago, tipos de comprobante
-│           │       └── settings/     cuentas de tesorería, usuarios
+│           │       └── settings/     cuentas de tesorería, usuarios, importar Excel
 │           ├── modules/              lógica por módulo (actions.ts y ui/)
 │           ├── components/ui/        componentes de shadcn
 │           └── shared/               cliente de la API, sesión, componentes comunes
@@ -810,24 +816,30 @@ Los `.env` **no se suben al repositorio**.
 
 ## 13. Migración del Excel histórico
 
-Para no empezar de cero, se importa enero–junio de 2026 desde el modelo.
+Implementado en la fase 5 (**Configuración → Importar Excel**, solo ADMIN y CONTADOR). Para no empezar de cero, se importa el histórico desde el modelo.
 
 ```mermaid
 flowchart TD
-    A[Subir MODELO DE CONCILIACION BANCOS.xlsx] --> B[Leer hojas visibles:<br/>SOLES, DÓLARES, EFECTIVO, TC]
-    B --> C[Saltar filas de encabezado<br/>que separan los meses]
-    C --> D[Normalizar:<br/>fecha serial → date<br/>DNI de 7 dígitos → 0 + DNI<br/>analítico → tipo, serie, número<br/>montos → 2 decimales]
-    D --> E[Agrupar líneas con el mismo voucher]
-    E --> F{Validar cada fila}
-    F -->|CTA inexistente, #N/A,<br/>documento inválido| G[Reporte de observaciones]
-    F -->|OK| H[Vista previa por cuenta y mes<br/>con totales]
+    A[Subir MODELO DE CONCILIACION BANCOS.xlsx] --> B[Leer solo hojas visibles<br/>con columnas del modelo]
+    B --> C[Encabezados repetidos por mes:<br/>cada uno hereda las columnas<br/>que le falten al anterior]
+    C --> D[Normalizar:<br/>fecha serial → date<br/>DNI de 7 dígitos → 0 + DNI<br/>analítico 1-... → 01-...<br/>importes → 2 decimales]
+    D --> E[Agrupar las líneas<br/>del mismo voucher]
+    E --> F{Validar con las reglas<br/>del registro rápido}
+    F -->|Error: sin RUC, sin COD,<br/>CTA inválida, número repetido<br/>o ya registrado| G[Voucher omitido<br/>y listado]
+    F -->|Válido| H[Vista previa guardada:<br/>hojas, meses, totales,<br/>proveedores nuevos y amarres]
     G --> H
-    H --> I{¿Contador confirma?}
-    I -->|No| A
-    I -->|Sí| J[Insertar en una transacción<br/>respetando los vouchers originales]
-    J --> K[Poblar entidades y<br/>detalles_frecuentes con usos reales]
-    K --> L[Ajustar correlativos<br/>al último número de cada mes]
+    H --> I{¿Confirma y asigna<br/>cada hoja a una cuenta?}
+    I -->|Descartar| X[Estado DESCARTADA]
+    I -->|Sí| J[Una transacción:<br/>vouchers con su número original]
+    J --> K[Proveedores y detalles<br/>con sus usos reales]
+    K --> L[Correlativo de cada mes<br/>= último número importado]
+    L --> M[Amarres de destino<br/>en cuentas que no tenían]
 ```
+
+- **Números originales**: `01-00053` se importa como `01-00053`. Si un número ya existe en el sistema o se repite entre hojas, ese voucher se omite y se avisa.
+- **Moneda de la hoja**: se detecta por el T.C. (distinto de 1 = dólares) y solo puede asignarse a una cuenta de esa moneda. La cuenta se sugiere por nombre.
+- **Fechas fuera de mes**: si el voucher es `04-…` pero la fecha es de mayo, se importa en abril con su fecha original y queda como aviso.
+- **Prueba con el modelo real**: 1 082 vouchers válidos de enero a junio (101 en dólares, 676 en soles y 305 en efectivo) en unos 9 segundos. Se omitieron 15 por problemas del Excel: sin RUC (`#N/A`), sin COD, analítico inválido o número repetido entre soles y efectivo.
 
 Gracias a la importación, el autocompletado arranca con el historial real de proveedores, detalles, CTA y COD.
 
@@ -851,6 +863,7 @@ flowchart LR
     style F2 fill:#d6f5ec,stroke:#16a085,color:#000
     style F3 fill:#d6f5ec,stroke:#16a085,color:#000
     style F4 fill:#d6f5ec,stroke:#16a085,color:#000
+    style F5 fill:#d6f5ec,stroke:#16a085,color:#000
     style F7 stroke-dasharray: 5 5
 ```
 
