@@ -5,6 +5,7 @@ import {
   hojaSchema,
   medioPagoSchema,
   opcionCuentaContableSchema,
+  plantillaSchema,
   ROLES_REGISTRAN,
   tipoComprobanteSchema,
 } from "@conciliacion/contracts";
@@ -52,11 +53,12 @@ export default async function QuickEntryPage({ searchParams }: Props) {
     return null;
   }
 
-  const [hoja, opcionesCuentas, medios, tipos] = await Promise.all([
+  const [hoja, opcionesCuentas, medios, tipos, plantillas] = await Promise.all([
     api("/ledger/sheet", hojaSchema, { consulta: { cuenta: seleccionada.id, anio, mes } }),
     api("/chart-of-accounts/options", opcionCuentaContableSchema.array()),
     api("/payment-methods", medioPagoSchema.array()),
     api("/voucher-types", tipoComprobanteSchema.array()),
+    api("/templates", plantillaSchema.array(), { consulta: { activas: true } }),
   ]);
 
   return (
@@ -76,6 +78,24 @@ export default async function QuickEntryPage({ searchParams }: Props) {
         puedeRegistrar={ROLES_REGISTRAN.includes(sesion.rol)}
         usuario={{ id: sesion.id, rol: sesion.rol }}
         editarId={typeof searchParams.editar === "string" ? searchParams.editar : null}
+        plantillas={plantillas.flatMap((plantilla) =>
+          plantilla.atajo === null
+            ? []
+            : [
+                {
+                  atajo: plantilla.atajo,
+                  etiqueta: plantilla.etiqueta,
+                  documento: plantilla.entidad.numeroDocumento,
+                  razonSocial: plantilla.entidad.razonSocial,
+                  detalle: plantilla.detalle,
+                  cuentaContableCodigo: plantilla.cuentaContableCodigo,
+                  medioPagoCodigo: plantilla.medioPagoCodigo,
+                  analitico: plantilla.analitico,
+                  tipo: plantilla.tipo,
+                  importe: plantilla.importe,
+                },
+              ],
+        )}
       />
     </MotionProvider>
   );
