@@ -2,7 +2,7 @@
 
 import type { KeyboardEvent } from "react";
 import type { Problema } from "@conciliacion/contracts/rules";
-import { AlertTriangle, Check, ListPlus, Minus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ListPlus, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BorradorEdicion, CampoCabecera, CampoDeLinea, CampoHoja, Foco } from "./draft-model";
 import { CELDA, CELDA_SIN_RELLENO, ENTRADA, ENTRADA_NUMERO, GRILLA, MARCA_AVISO, MARCA_ERROR } from "./sheet-styles";
@@ -58,6 +58,7 @@ export function DraftRows(props: Props) {
   const enfocado = foco?.borradorId === borrador.id;
   const visibles = enfocado ? problemas.filter((problema) => problema.nivel === "aviso") : problemas;
   const fondo = estado === "error" ? "bg-[#2a1a24]" : estado === "aviso" ? "bg-[#272414]" : estado === "vacio" ? "bg-[#0a1f36]" : "bg-[#0c2540]";
+  const borde = borrador.voucherId ? "border-l-2 border-l-primary" : "";
 
   const entrada = (campo: CampoHoja, linea: number, valor: string, opciones: { numero?: boolean; tipo?: string; modo?: "numeric" | "decimal" } = {}) => {
     const lineaProblema = campo === "detalle" || campo === "ingreso" || campo === "egreso" || campo === "cuentaContableCodigo" ? linea : null;
@@ -95,13 +96,20 @@ export function DraftRows(props: Props) {
   }
 
   return (
-    <div className={cn("border-b border-border/70", fondo)}>
+    <div className={cn("border-b border-border/70", fondo, borde)}>
       <div className={GRILLA}>
         <div className={cn(CELDA, "justify-center text-[11px] text-muted-foreground")}>{filaInicial}</div>
         <div className={CELDA_SIN_RELLENO}>{entrada("nroOperacion", 0, borrador.nroOperacion)}</div>
-        <div className={cn(CELDA, "italic tabular-nums text-sistema")} title="Correlativo provisional; se confirma al registrar">
-          {codigoProvisional}
-        </div>
+        {borrador.voucherId ? (
+          <div className={cn(CELDA, "gap-1 font-semibold tabular-nums text-primary")} title="Editando un voucher registrado; conserva su número">
+            <Pencil className="size-3 shrink-0" aria-hidden="true" />
+            {borrador.codigo}
+          </div>
+        ) : (
+          <div className={cn(CELDA, "italic tabular-nums text-sistema")} title="Correlativo provisional; se confirma al registrar">
+            {codigoProvisional}
+          </div>
+        )}
         <div className={CELDA_SIN_RELLENO}>{entrada("fechaOperacion", 0, borrador.fechaOperacion, { tipo: "date" })}</div>
         <div className={CELDA_SIN_RELLENO}>{entrada("analitico", 0, borrador.analitico)}</div>
         <div className={CELDA_SIN_RELLENO}>{entrada("documento", 0, borrador.documento, { numero: true, modo: "numeric" })}</div>
@@ -142,8 +150,14 @@ export function DraftRows(props: Props) {
           <button type="button" onClick={props.alAgregarLinea} title="Agregar línea al mismo voucher (Alt+L)" aria-label={`Agregar línea a la fila ${filaInicial}`} className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-primary">
             <ListPlus className="size-3.5" />
           </button>
-          <button type="button" onClick={props.alQuitar} title="Quitar fila de la hoja" aria-label={`Quitar fila ${filaInicial}`} className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive">
-            <Trash2 className="size-3.5" />
+          <button
+            type="button"
+            onClick={props.alQuitar}
+            title={borrador.voucherId ? "Descartar cambios" : "Quitar fila de la hoja"}
+            aria-label={borrador.voucherId ? `Descartar cambios del voucher ${borrador.codigo ?? ""}` : `Quitar fila ${filaInicial}`}
+            className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+          >
+            {borrador.voucherId ? <Undo2 className="size-3.5" /> : <Trash2 className="size-3.5" />}
           </button>
         </div>
       </div>
