@@ -119,6 +119,42 @@ export class MastersRepository {
     await tx.cuentaContable.update({ where: { codigo }, data: datos });
   }
 
+  cuentasPorCodigo(tx: Transaccion, codigos: string[]): Promise<CuentaContableRegistro[]> {
+    return tx.cuentaContable.findMany({ where: { codigo: { in: codigos } }, select: camposCuentaContable });
+  }
+
+  crearCuentaContable(tx: Transaccion, datos: Prisma.CuentaContableUncheckedCreateInput): Promise<CuentaContableRegistro> {
+    return tx.cuentaContable.create({ data: datos, select: camposCuentaContable });
+  }
+
+  editarCuentaContable(tx: Transaccion, codigo: string, datos: Prisma.CuentaContableUncheckedUpdateInput): Promise<CuentaContableRegistro> {
+    return tx.cuentaContable.update({ where: { codigo }, data: datos, select: camposCuentaContable });
+  }
+
+  async subcuentasQueCuelganDe(tx: Transaccion, padreCodigo: string | null, prefijo: string): Promise<string[]> {
+    const filas = await tx.cuentaContable.findMany({
+      where: { padreCodigo, codigo: { startsWith: prefijo, not: prefijo } },
+      select: { codigo: true },
+    });
+    return filas.map((fila) => fila.codigo);
+  }
+
+  async colgarDe(tx: Transaccion, codigos: string[], padreCodigo: string, prefijo: string): Promise<void> {
+    if (codigos.length === 0) {
+      return;
+    }
+    await tx.cuentaContable.updateMany({ where: { codigo: { in: codigos } }, data: { padreCodigo } });
+    await tx.cuentaContable.updateMany({ where: { codigo: { startsWith: prefijo, not: prefijo } }, data: { nivel: { increment: 1 } } });
+  }
+
+  async usosQueRequierenMovimiento(tx: Transaccion, codigo: string): Promise<{ tesoreria: string[]; plantillas: string[] }> {
+    const [tesoreria, plantillas] = await Promise.all([
+      tx.cuentaTesoreria.findMany({ where: { cuentaContableCodigo: codigo }, select: { nombre: true } }),
+      tx.plantilla.findMany({ where: { cuentaContableCodigo: codigo, activa: true }, select: { etiqueta: true } }),
+    ]);
+    return { tesoreria: tesoreria.map((fila) => fila.nombre), plantillas: plantillas.map((fila) => fila.etiqueta) };
+  }
+
   actualizarDestinos(tx: Transaccion, codigo: string, destinoDebeCodigo: string | null, destinoHaberCodigo: string | null): Promise<CuentaContableRegistro> {
     return tx.cuentaContable.update({ where: { codigo }, data: { destinoDebeCodigo, destinoHaberCodigo }, select: camposCuentaContable });
   }
