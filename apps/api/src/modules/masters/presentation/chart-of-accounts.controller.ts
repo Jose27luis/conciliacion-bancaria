@@ -18,8 +18,10 @@ import { ChartOfAccountsService } from "../application/chart-of-accounts.service
 import {
   ActivacionDto,
   CuentaContableDto,
+  CrearCuentaContableDto,
   CuentasContablesQueryDto,
   DestinosCuentaDto,
+  EditarCuentaContableDto,
   ImportacionPlanRechazoDto,
   ImportacionPlanResultadoDto,
   OpcionCuentaContableDto,
@@ -84,6 +86,29 @@ export class ChartOfAccountsController {
       throw errores.validacion("El archivo debe ser .xlsx.", { archivo: "El archivo debe ser .xlsx." });
     }
     return this.plan.importar(archivo.buffer, archivo.originalname, actor);
+  }
+
+  @Post()
+  @Roles(...ROLES_EDITAN_MAESTROS)
+  @ApiProtegida("validacion", "conflicto")
+  @ApiOperation({
+    summary: "Crear cuenta contable",
+    description:
+      "El padre y el nivel se calculan por el código. Si el padre era de movimiento pasa a agrupadora (se rechaza si lo usa una cuenta de tesorería o una plantilla activa). Si ya existen subcuentas del nuevo código, pasan a colgar de él.",
+  })
+  @ZodResponse({ status: 201, description: "Cuenta creada", type: CuentaContableDto })
+  crear(@Body() entrada: CrearCuentaContableDto, @UsuarioActual() actor: UsuarioSesion): Promise<CuentaContable> {
+    return this.plan.crear(entrada, actor);
+  }
+
+  @Put(":codigo")
+  @Roles(...ROLES_EDITAN_MAESTROS)
+  @ApiParam(PARAM_CODIGO)
+  @ApiProtegida("validacion", "noEncontrado")
+  @ApiOperation({ summary: "Editar cuenta contable", description: "Cambia denominación, tipo, clase, moneda y marcas. El código no se edita." })
+  @ZodResponse({ status: 200, description: "Cuenta editada", type: CuentaContableDto })
+  editar(@Param("codigo") codigo: string, @Body() entrada: EditarCuentaContableDto, @UsuarioActual() actor: UsuarioSesion): Promise<CuentaContable> {
+    return this.plan.editar(codigo, entrada, actor);
   }
 
   @Put(":codigo/destinations")
