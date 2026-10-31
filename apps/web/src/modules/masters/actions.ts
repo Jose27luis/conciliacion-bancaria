@@ -4,6 +4,7 @@ import {
   crearTipoComprobanteSchema,
   cuentaContableSchema,
   cuentaTesoreriaSchema,
+  destinosCuentaSchema,
   guardarCuentaTesoreriaSchema,
   importacionPlanRechazoSchema,
   importacionPlanResultadoSchema,
@@ -52,6 +53,20 @@ export async function cambiarActivacionCuentaContable(codigo: string, _estado: E
     await api(`/chart-of-accounts/${codigo}/activation`, cuentaContableSchema, { metodo: "PATCH", json: { activo } });
     revalidatePath(RUTAS.plan);
   }, activo ? `Cuenta ${codigo} activada.` : `Cuenta ${codigo} desactivada.`);
+}
+
+export async function cambiarDestinos(codigo: string, _estado: EstadoFormulario, datos: FormData): Promise<EstadoFormulario> {
+  const entrada = destinosCuentaSchema.safeParse({
+    destinoDebeCodigo: textoOpcional(datos, "destinoDebeCodigo"),
+    destinoHaberCodigo: textoOpcional(datos, "destinoHaberCodigo"),
+  });
+  if (!entrada.success) {
+    return falloDeZod(entrada.error);
+  }
+  return ejecutarAccion(async () => {
+    await api(`/chart-of-accounts/${codigo}/destinations`, cuentaContableSchema, { metodo: "PUT", json: entrada.data });
+    revalidatePath(RUTAS.plan);
+  }, entrada.data.destinoDebeCodigo ? `Amarre de ${codigo} guardado.` : `Amarre de ${codigo} quitado.`);
 }
 
 export async function cambiarActivacionMedioPago(codigo: string, _estado: EstadoFormulario, datos: FormData): Promise<EstadoFormulario> {
