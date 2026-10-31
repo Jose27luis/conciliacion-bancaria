@@ -10,7 +10,7 @@ Aplicativo web de **conciliación bancaria** para registrar los movimientos de b
 | **Frontend** | Next.js (App Router) + shadcn/ui + Tailwind CSS |
 | **Base de datos** | PostgreSQL |
 | **Monorepo** | pnpm workspaces (`apps/api`, `apps/web`, `packages/contracts`) |
-| **Estado** | Fases 1, 2 y 3 implementadas: sesión, usuarios, plan contable, catálogos SUNAT, cuentas de tesorería, Registro rápido y Libro de movimientos (edición, anulación y exportación a Excel). |
+| **Estado** | Fases 1 a 4 implementadas: sesión, usuarios, plan contable con amarres, catálogos SUNAT, cuentas de tesorería, Registro rápido, Libro de movimientos (edición, anulación y exportación a Excel), proveedores y plantillas de atajos. |
 
 ---
 
@@ -353,6 +353,7 @@ erDiagram
         string medio_pago_id FK
         int usos
         timestamp ultimo_uso
+        bool activo "false: ya no se sugiere"
     }
     cuentas_contables {
         string codigo PK "2 a 6 dígitos"
@@ -377,13 +378,16 @@ erDiagram
     }
     plantillas {
         uuid id PK
-        string atajo "Alt+1"
+        int atajo UK "1 a 9; nulo si está desactivada"
         string etiqueta
         uuid entidad_id FK
         string detalle
-        string cuenta_contable_id FK
-        string medio_pago_id FK
-        decimal importe
+        string cuenta_contable_codigo FK
+        string medio_pago_codigo FK
+        string analitico "--, prefijo 01- o vacío"
+        enum tipo "EGRESO | INGRESO"
+        decimal importe "opcional"
+        bool activa
     }
     importaciones {
         uuid id PK
@@ -586,11 +590,11 @@ flowchart LR
         RS[Resumen y cierre]
         CF[Configuración]
     end
-    MA --> MA1[Entidades]
-    MA --> MA2[Plan contable]
+    MA --> MA1[Proveedores y clientes]
+    MA --> MA2[Plan contable y amarres]
     MA --> MA3[Medios de pago]
-    MA --> MA4[Tipo de cambio]
-    MA --> MA5[Plantillas Alt+1…6]
+    MA --> MA4[Tipos de comprobante]
+    MA --> MA5[Plantillas Alt+1…9]
     CF --> CF1[Cuentas de tesorería]
     CF --> CF2[Usuarios y roles]
     CF --> CF3[Importar Excel]
@@ -600,7 +604,7 @@ flowchart LR
 |---|---|---|
 | **Registro rápido** | Hoja de captura por cuenta y mes, autocompletado, vouchers con varias líneas, validación, avisos de duplicado, atajos y registro por lote. | Implementado (fase 2) |
 | **Libro de movimientos** | Vouchers del mes con filtros (cuenta, estado y búsqueda por voucher, documento, razón social, analítico, detalle o CTA), totales por moneda, edición, anulación con motivo y exportación a Excel con las columnas del modelo. | Implementado (fase 3) |
-| **Maestros** | CRUD de entidades, plan contable (importación), medios de pago, tipo de cambio y plantillas. | Por diseñar |
+| **Maestros** | Proveedores (razón social y detalles frecuentes: corregir o desactivar), plan contable (importación y amarre de destino), medios de pago, tipos de comprobante y plantillas de atajos. | Implementado (fase 4) |
 | **Resumen y cierre** | Totales de ingreso, egreso y neto por cuenta y mes, saldo inicial y final, pendientes y cierre de periodo. | Por diseñar |
 | **Configuración** | Cuentas de tesorería, usuarios y roles, importación del Excel histórico. | Por diseñar |
 
@@ -615,7 +619,7 @@ flowchart LR
 | `Alt+D` | Duplicar la fila anterior | Implementado |
 | `Alt+N` | Fila nueva | Implementado |
 | `Ctrl+Enter` | Registrar todas las filas listas | Implementado |
-| `Alt+1…6` | Insertar plantilla frecuente configurable | Fase 4 |
+| `Alt+1…9` | Insertar una plantilla: crea la fila llena y deja el cursor donde falta el dato (analítico o importe) | Implementado |
 
 Las filas en edición se guardan en el navegador mientras no se registran, así que recargar la página no las pierde.
 
@@ -657,8 +661,13 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `PUT` | `/ledger/vouchers/:id` | Edita un voucher del mes abierto conservando su número |
 | `POST` | `/ledger/vouchers/:id/void` | Anula con motivo |
 | `GET` | `/ledger/export.xlsx?anio=&mes=&cuenta=` | Excel con una hoja por cuenta y las columnas del modelo |
+| `GET` | `/entities?q=&pagina=` · `/entities/:id` | Proveedores paginados y ficha con todos sus detalles |
+| `PUT` | `/entities/:id` | Corrige la razón social |
+| `PUT` `PATCH` | `/entities/:id/details/:detalleId` · `/activation` | Corrige o desactiva un detalle frecuente |
+| `PUT` | `/chart-of-accounts/:codigo/destinations` | Amarre de destino debe y haber |
+| `GET` `POST` `PUT` `PATCH` | `/templates` · `/templates/:id` · `/templates/:id/activation` | Plantillas de atajos Alt+1…9 |
 
-**Previstos** para las siguientes fases: plantillas de atajos, cierre y reapertura de periodos, importación del Excel histórico y resumen por cuenta.
+**Previstos** para las siguientes fases: importación del Excel histórico, cierre y reapertura de periodos y resumen por cuenta.
 
 ### 10.1 Edición y anulación
 
@@ -677,7 +686,22 @@ flowchart LR
 - **No se borra nada**: al editar, las líneas que se quitan quedan con `vigente = false`; al anular, el voucher queda con su motivo y sale del Excel y de los totales.
 - **La fecha no puede cambiar de mes**: el número `MM-NNNNN` pertenece al mes. Para moverlo, se anula y se registra de nuevo.
 - **Permisos**: ADMIN y CONTADOR modifican cualquier voucher; ASISTENTE solo los que registró; LECTOR solo consulta.
-- **Excel**: columnas `Nº/Cheque/Operación · N# Voucher · Fecha Operación · Analítico · Ruc · Razón social · Detalle · T.C · Ingreso · Egreso · CTA · COD`, una fila por línea (los pagos agrupados repiten el voucher, como en el modelo) y una hoja por cuenta.
+- **Excel**: columnas `Nº/Cheque/Operación · N# Voucher · Fecha Operación · Analítico · Ruc · Razón social · Detalle · T.C · Ingreso · Egreso · CTA · COD · Destino debe · Destino haber`, una fila por línea (los pagos agrupados repiten el voucher, como en el modelo) y una hoja por cuenta. Las dos últimas columnas salen del amarre configurado en el plan contable (las columnas M y N del modelo).
+
+### 10.2 Maestros y plantillas
+
+- **Proveedores**: se crean solos al registrar. En su ficha se corrige la razón social (por ejemplo los `#N/A` del Excel) y los detalles aprendidos: se puede cambiar su texto, CTA o COD, o desactivarlos para que dejen de sugerirse. El documento no se edita.
+- **Amarre de destino**: cada cuenta de movimiento puede tener destino debe y haber (por ejemplo `6593 → 95 / 791`, `6373 → 94 / 791`). Se piden los dos o ninguno.
+- **Plantillas**: hasta 9 activas, una por tecla. Al desactivar una plantilla su tecla queda libre; al reactivarla recupera la suya si sigue libre o toma la primera disponible.
+
+```mermaid
+flowchart LR
+    P[Alt+2 · Mantenimiento] --> F[Fila nueva con proveedor,<br/>detalle, CTA, COD,<br/>analítico 01- e importe 10.00]
+    F --> C{¿Qué falta?}
+    C -->|Prefijo 01-| A[Cursor en el analítico<br/>para la serie y el número]
+    C -->|Sin importe| I[Cursor en Ingreso o Egreso]
+    C -->|Todo completo| D[Cursor en la fecha]
+```
 
 ---
 
@@ -700,6 +724,7 @@ conciliacion-bancaria/
 │   │       │   ├── masters/          plan contable, catálogos SUNAT, cuentas de tesorería
 │   │       │   ├── periods/          periodos y correlativo mensual
 │   │       │   ├── entities/         proveedores y detalles frecuentes
+│   │       │   ├── templates/        plantillas de atajos Alt+1…9
 │   │       │   └── ledger/           hoja, registro, edición, anulación y exportación a Excel
 │   │       └── shared/               prisma, config, errores, documentación Swagger
 │   └── web/                          Next.js + shadcn/ui
@@ -710,7 +735,7 @@ conciliacion-bancaria/
 │           │   └── (app)/
 │           │       ├── quick-entry/  Registro rápido
 │           │       ├── ledger/       Libro de movimientos y descarga del Excel
-│           │       ├── masters/      plan contable, medios de pago, tipos de comprobante
+│           │       ├── masters/      proveedores, plantillas, plan contable, medios de pago, tipos de comprobante
 │           │       └── settings/     cuentas de tesorería, usuarios
 │           ├── modules/              lógica por módulo (actions.ts y ui/)
 │           ├── components/ui/        componentes de shadcn
@@ -816,7 +841,7 @@ flowchart LR
     F1[Fase 1<br/>Monorepo, auth,<br/>Prisma, catálogos,<br/>plan contable] --> F2
     F2[Fase 2<br/>Registro rápido<br/>+ validación<br/>+ correlativo] --> F3
     F3[Fase 3<br/>Libro de movimientos<br/>edición, anulación,<br/>exportación Excel] --> F4
-    F4[Fase 4<br/>Maestros y<br/>tipo de cambio] --> F5
+    F4[Fase 4<br/>Maestros, amarres<br/>y plantillas] --> F5
     F5[Fase 5<br/>Importación del<br/>Excel histórico] --> F6
     F6[Fase 6<br/>Resumen, saldos<br/>y cierre de mes] --> F7
     F7[Fase 7<br/>Conciliación contra<br/>extracto bancario] --> F8[Fase 8<br/>QA y despliegue]
@@ -825,6 +850,7 @@ flowchart LR
     style F1 fill:#d6f5ec,stroke:#16a085,color:#000
     style F2 fill:#d6f5ec,stroke:#16a085,color:#000
     style F3 fill:#d6f5ec,stroke:#16a085,color:#000
+    style F4 fill:#d6f5ec,stroke:#16a085,color:#000
     style F7 stroke-dasharray: 5 5
 ```
 
