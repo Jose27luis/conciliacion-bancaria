@@ -23,6 +23,7 @@ type Opciones = {
   json?: unknown;
   formulario?: FormData;
   consulta?: Record<string, string | number | boolean | undefined>;
+  cabeceras?: Record<string, string>;
 };
 
 function url(ruta: string, consulta: Opciones["consulta"]): string {
@@ -44,7 +45,7 @@ async function errorDeRespuesta(respuesta: Response): Promise<ErrorDeApi> {
 
 async function enviar(ruta: string, opciones: Opciones): Promise<Response> {
   const token = cookies().get(NOMBRE_COOKIE_SESION)?.value;
-  const cabeceras = new Headers();
+  const cabeceras = new Headers(opciones.cabeceras);
   if (token) {
     cabeceras.set("cookie", `${NOMBRE_COOKIE_SESION}=${token}`);
   }
