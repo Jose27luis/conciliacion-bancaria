@@ -96,6 +96,9 @@ export const cuentaTesoreriaSchema = z.object({
   cuentaContableDenominacion: z.string(),
   orden: z.number().int(),
   activa: z.boolean(),
+  saldoApertura: z.string().nullable().describe("Saldo al inicio del mes de apertura"),
+  aperturaAnio: z.number().int().nullable(),
+  aperturaMes: z.number().int().nullable(),
 });
 export type CuentaTesoreria = z.infer<typeof cuentaTesoreriaSchema>;
 
