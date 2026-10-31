@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cambiarActivacionCuentaContable } from "@/modules/masters/actions";
+import { AccountDialog } from "@/modules/masters/ui/account-dialog";
 import { ChartImportDialog } from "@/modules/masters/ui/chart-import-dialog";
 import { DestinationsDialog } from "@/modules/masters/ui/destinations-dialog";
 import { api } from "@/shared/api/server-client";
@@ -57,7 +58,14 @@ export default async function ChartOfAccountsPage({ searchParams }: Props) {
         seccion="Maestros"
         titulo="Plan contable"
         descripcion="Cuentas que se usan en la columna CTA. Solo las cuentas de movimiento se pueden registrar."
-        acciones={editable ? <ChartImportDialog /> : null}
+        acciones={
+          editable ? (
+            <>
+              <AccountDialog />
+              <ChartImportDialog />
+            </>
+          ) : null
+        }
       />
 
       <form className="flex flex-wrap items-end gap-3" role="search">
@@ -137,6 +145,7 @@ export default async function ChartOfAccountsPage({ searchParams }: Props) {
                   {editable ? (
                     <TableCell>
                       <div className="flex justify-end gap-1">
+                        <AccountDialog cuenta={cuenta} />
                         {cuenta.deMovimiento ? (
                           <DestinationsDialog codigo={cuenta.codigo} denominacion={cuenta.denominacion} destinoDebe={cuenta.destinoDebeCodigo} destinoHaber={cuenta.destinoHaberCodigo} />
                         ) : null}
