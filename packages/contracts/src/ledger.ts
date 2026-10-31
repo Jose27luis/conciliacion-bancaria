@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginaQuerySchema, paginaSchema } from "./common";
 import { ESTADOS_PERIODO, ESTADOS_VOUCHER, MONEDAS } from "./enums";
 import { MAXIMO_LINEAS_VOUCHER, TIPOS_DOCUMENTO_ENTIDAD } from "./ledger-rules";
 
@@ -20,7 +21,9 @@ export const voucherEntradaSchema = z.object({
   medioPagoCodigo: texto(3, "Código de medio de pago (Tabla 1 SUNAT)"),
   tipoCambio: texto(10, "Tipo de cambio digitado; en cuentas en soles se ignora"),
   lineas: z.array(lineaEntradaSchema).min(1).max(MAXIMO_LINEAS_VOUCHER).describe("Líneas del voucher; varias si es un pago agrupado"),
+  voucherId: z.uuid().optional().describe("Solo para avisos: voucher que se está editando, para no compararlo consigo mismo"),
 });
+export type VoucherEntrada = z.infer<typeof voucherEntradaSchema>;
 
 export const loteVouchersSchema = z.object({
   cuentaTesoreriaId: z.uuid().describe("Cuenta de tesorería (pestaña) donde se registran"),
@@ -66,6 +69,8 @@ export const voucherSchema = z.object({
   anio: z.number().int(),
   mes: z.number().int(),
   cuentaTesoreriaId: z.uuid(),
+  cuentaTesoreriaNombre: z.string(),
+  moneda: z.enum(MONEDAS),
   fechaOperacion: z.string(),
   nroOperacion: z.string().nullable(),
   analitico: z.string(),
@@ -74,10 +79,47 @@ export const voucherSchema = z.object({
   medioPagoDescripcion: z.string(),
   tipoCambio: z.string().describe("Tipo de cambio con 3 decimales"),
   estado: z.enum(ESTADOS_VOUCHER),
+  motivoAnulacion: z.string().nullable(),
   lineas: z.array(lineaSchema),
+  creadoPorId: z.uuid(),
+  creadoPorNombre: z.string(),
   creadoEn: z.iso.datetime(),
 });
 export type Voucher = z.infer<typeof voucherSchema>;
+
+export const anularVoucherSchema = z.object({
+  motivo: z.string().trim().min(5, "Explica el motivo en al menos 5 caracteres.").max(250).describe("Motivo de la anulación"),
+});
+export type AnularVoucherEntrada = z.infer<typeof anularVoucherSchema>;
+
+export const FILTROS_ESTADO_VOUCHER = ["REGISTRADO", "ANULADO", "TODOS"] as const;
+
+export const libroQuerySchema = paginaQuerySchema.extend({
+  cuenta: z.uuid().optional().describe("Cuenta de tesorería; sin valor, todas"),
+  anio: z.coerce.number().int().min(2000).max(2100),
+  mes: z.coerce.number().int().min(1).max(12),
+  q: z.string().trim().max(120).optional().describe("Voucher MM-NNNNN, documento, razón social, analítico o detalle"),
+  estado: z.enum(FILTROS_ESTADO_VOUCHER).default("REGISTRADO").describe("REGISTRADO, ANULADO o TODOS"),
+});
+export type LibroQuery = z.infer<typeof libroQuerySchema>;
+
+export const totalMonedaSchema = z.object({
+  moneda: z.enum(MONEDAS),
+  ingreso: z.string(),
+  egreso: z.string(),
+});
+
+export const libroSchema = paginaSchema(voucherSchema).extend({
+  totales: z.array(totalMonedaSchema).describe("Totales de los vouchers registrados que cumplen el filtro, por moneda"),
+});
+export type Libro = z.infer<typeof libroSchema>;
+
+export const exportacionQuerySchema = z.object({
+  cuenta: z.uuid().optional().describe("Cuenta de tesorería; sin valor, una hoja por cada cuenta"),
+  anio: z.coerce.number().int().min(2000).max(2100),
+  mes: z.coerce.number().int().min(1).max(12),
+});
+export type ExportacionQuery = z.infer<typeof exportacionQuerySchema>;
 
 export const loteRegistradoSchema = z.object({ vouchers: z.array(voucherSchema) });
 export type LoteRegistrado = z.infer<typeof loteRegistradoSchema>;
