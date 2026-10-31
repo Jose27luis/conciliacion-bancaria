@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, BookText, Building2, CreditCard, FileUp, Keyboard, FileText, Landmark, Table, Users, type LucideIcon } from "lucide-react";
+import { BookOpen, BookText, Building2, CreditCard, FileText, FileUp, Keyboard, Landmark, PieChart, Table, Users, type LucideIcon } from "lucide-react";
 import { ROLES_EDITAN_MAESTROS, type Rol } from "@conciliacion/contracts/enums";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ const GRUPOS: Grupo[] = [
     enlaces: [
       { href: "/quick-entry", etiqueta: "Registro rápido", icono: Table },
       { href: "/ledger", etiqueta: "Libro de movimientos", icono: BookText },
+      { href: "/summary", etiqueta: "Resumen y cierre", icono: PieChart },
     ],
   },
   {
