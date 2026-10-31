@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiPayloadTooLargeResponse, ApiTags, ApiUnprocessableEntityResponse } from "@nestjs/swagger";
 import {
@@ -19,6 +19,7 @@ import {
   ActivacionDto,
   CuentaContableDto,
   CuentasContablesQueryDto,
+  DestinosCuentaDto,
   ImportacionPlanRechazoDto,
   ImportacionPlanResultadoDto,
   OpcionCuentaContableDto,
@@ -83,6 +84,19 @@ export class ChartOfAccountsController {
       throw errores.validacion("El archivo debe ser .xlsx.", { archivo: "El archivo debe ser .xlsx." });
     }
     return this.plan.importar(archivo.buffer, archivo.originalname, actor);
+  }
+
+  @Put(":codigo/destinations")
+  @Roles(...ROLES_EDITAN_MAESTROS)
+  @ApiParam(PARAM_CODIGO)
+  @ApiProtegida("validacion", "noEncontrado")
+  @ApiOperation({
+    summary: "Amarre de destino",
+    description: "Cuentas de destino debe y haber de una cuenta de gasto (por ejemplo 6593 → 95 / 791). Se envían las dos o ninguna (null) para quitarlo.",
+  })
+  @ZodResponse({ status: 200, description: "Cuenta actualizada", type: CuentaContableDto })
+  cambiarDestinos(@Param("codigo") codigo: string, @Body() entrada: DestinosCuentaDto, @UsuarioActual() actor: UsuarioSesion): Promise<CuentaContable> {
+    return this.plan.cambiarDestinos(codigo, entrada, actor);
   }
 
   @Patch(":codigo/activation")
