@@ -4,6 +4,7 @@ import {
   cuentaContableSchema,
   cuentaTesoreriaSchema,
   cuentasContablesQuerySchema,
+  destinosCuentaSchema,
   guardarCuentaTesoreriaSchema,
   importacionPlanRechazoSchema,
   importacionPlanResultadoSchema,
@@ -17,6 +18,7 @@ import { z } from "zod";
 
 export class CuentaContableDto extends createZodDto(cuentaContableSchema) {}
 export class OpcionCuentaContableDto extends createZodDto(opcionCuentaContableSchema) {}
+export class DestinosCuentaDto extends createZodDto(destinosCuentaSchema) {}
 export class CuentasContablesQueryDto extends createZodDto(cuentasContablesQuerySchema) {}
 export class PaginaCuentasContablesDto extends createZodDto(paginaCuentasContablesSchema) {}
 export class ImportacionPlanResultadoDto extends createZodDto(importacionPlanResultadoSchema) {}
