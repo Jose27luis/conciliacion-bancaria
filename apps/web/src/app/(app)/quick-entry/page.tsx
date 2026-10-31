@@ -12,16 +12,13 @@ import { Button } from "@/components/ui/button";
 import { QuickEntry } from "@/modules/ledger/ui/quick-entry";
 import { api } from "@/shared/api/server-client";
 import { exigirSesion } from "@/shared/auth/session";
+import { hoyEnLima } from "@/shared/lib/dates";
 import { MotionProvider } from "@/shared/ui/motion-provider";
 import { PageHeader } from "@/shared/ui/page-header";
 
 export const metadata: Metadata = { title: "Registro rápido" };
 
 type Props = { searchParams: Record<string, string | string[] | undefined> };
-
-function hoyEnLima(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
 
 function entero(valor: string | string[] | undefined, minimo: number, maximo: number): number | null {
   const numero = typeof valor === "string" ? Number(valor) : Number.NaN;
@@ -77,6 +74,8 @@ export default async function QuickEntryPage({ searchParams }: Props) {
         tipos={tipos.filter((tipo) => tipo.activo).map(({ codigo, descripcion }) => ({ codigo, descripcion }))}
         hoy={hoy}
         puedeRegistrar={ROLES_REGISTRAN.includes(sesion.rol)}
+        usuario={{ id: sesion.id, rol: sesion.rol }}
+        editarId={typeof searchParams.editar === "string" ? searchParams.editar : null}
       />
     </MotionProvider>
   );
