@@ -1,5 +1,6 @@
 import "./locale";
 
+export * from "./catalog-maintenance";
 export * from "./common";
 export * from "./enums";
 export * from "./identity";
