@@ -291,6 +291,7 @@ export class LedgerService {
       if (!vigente || vigente.estado !== "REGISTRADO") {
         throw errores.conflicto("El voucher cambió mientras lo editabas. Recarga la hoja.");
       }
+      await this.periodos.periodoAbierto(tx, vigente.periodo.anio, vigente.periodo.mes);
       const documentoActual = vigente.entidad.numeroDocumento;
       const cabecera = await this.cabecera(tx, entrada, vigente.cuentaTesoreria.moneda, normalizarDocumento(entrada.documento) === documentoActual ? vigente.entidad.id : null);
       await this.repositorio.actualizarCabecera(tx, id, cabecera);
@@ -339,6 +340,7 @@ export class LedgerService {
       if (!vigente || vigente.estado !== "REGISTRADO") {
         throw errores.conflicto("El voucher ya fue anulado.");
       }
+      await this.periodos.periodoAbierto(tx, vigente.periodo.anio, vigente.periodo.mes);
       await this.repositorio.anular(tx, id, entrada.motivo);
       const resultado = await this.repositorio.buscarVoucher(tx, id);
       if (!resultado) {
