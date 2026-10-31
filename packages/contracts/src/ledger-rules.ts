@@ -117,6 +117,68 @@ export function normalizarTexto(valor: string): string {
     .trim();
 }
 
+function distanciaMaximaUno(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) {
+    return false;
+  }
+  let i = 0;
+  let j = 0;
+  let diferencias = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    diferencias += 1;
+    if (diferencias > 1) {
+      return false;
+    }
+    if (a.length === b.length && a[i] === b[j + 1] && a[i + 1] === b[j]) {
+      i += 2;
+      j += 2;
+    } else if (a.length > b.length) {
+      i += 1;
+    } else if (b.length > a.length) {
+      j += 1;
+    } else {
+      i += 1;
+      j += 1;
+    }
+  }
+  return diferencias + (a.length - i) + (b.length - j) <= 1;
+}
+
+function palabraCoincide(buscada: string, palabras: string[]): number {
+  if (palabras.some((palabra) => palabra.startsWith(buscada))) {
+    return 2;
+  }
+  if (palabras.some((palabra) => palabra.includes(buscada))) {
+    return 1.5;
+  }
+  if (buscada.length >= 4 && palabras.some((palabra) => distanciaMaximaUno(buscada, palabra) || distanciaMaximaUno(buscada, palabra.slice(0, buscada.length)))) {
+    return 1;
+  }
+  return 0;
+}
+
+export function puntajeCoincidencia(texto: string, consulta: string): number {
+  const buscadas = normalizarTexto(consulta).split(" ").filter(Boolean);
+  if (buscadas.length === 0) {
+    return 1;
+  }
+  const palabras = normalizarTexto(texto).split(/[^A-Z0-9]+/).filter(Boolean);
+  let total = 0;
+  for (const buscada of buscadas) {
+    const puntaje = palabraCoincide(buscada, palabras);
+    if (puntaje === 0) {
+      return 0;
+    }
+    total += puntaje;
+  }
+  return total / buscadas.length;
+}
+
 function validarDocumento(borrador: VoucherBorrador, contexto: ContextoValidacion, problemas: Problema[]): void {
   const documento = normalizarDocumento(borrador.documento);
   if (!documento) {
