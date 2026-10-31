@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Search } from "lucide-react";
 import { cuentasContablesQuerySchema, paginaCuentasContablesSchema, ROLES_EDITAN_MAESTROS, ETIQUETAS_CLASE_CUENTA_CONTABLE } from "@conciliacion/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cambiarActivacionCuentaContable } from "@/modules/masters/actions";
 import { AccountDialog } from "@/modules/masters/ui/account-dialog";
@@ -15,6 +12,7 @@ import { DestinationsDialog } from "@/modules/masters/ui/destinations-dialog";
 import { api } from "@/shared/api/server-client";
 import { exigirSesion } from "@/shared/auth/session";
 import { ActivationButton } from "@/shared/ui/activation-button";
+import { FilterSelect, LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader } from "@/shared/ui/page-header";
 import { Pagination } from "@/shared/ui/pagination";
 import { StatusBadge } from "@/shared/ui/status-badge";
@@ -68,34 +66,29 @@ export default async function ChartOfAccountsPage({ searchParams }: Props) {
         }
       />
 
-      <form className="flex flex-wrap items-end gap-3" role="search">
-        <div className="grid gap-1.5">
-          <Label htmlFor="buscar-cuenta">Buscar por código o denominación</Label>
-          <Input id="buscar-cuenta" name="q" defaultValue={consulta.q} className="w-72" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="filtro-movimiento">Tipo de cuenta</Label>
-          <select
-            id="filtro-movimiento"
-            name="movimiento"
-            defaultValue={consulta.movimiento === undefined ? "" : String(consulta.movimiento)}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-          >
-            <option value="">Todas</option>
-            <option value="true">Solo de movimiento</option>
-            <option value="false">Solo agrupadoras</option>
-          </select>
-        </div>
-        <Button type="submit" variant="secondary">
-          <Search className="size-4" aria-hidden="true" />
-          Buscar
-        </Button>
+      <div className="flex flex-wrap items-start gap-3" role="search">
+        <LiveSearch
+          id="buscar-cuenta"
+          etiqueta="Buscar por código o denominación"
+          ayuda="Busca mientras escribes; acepta palabras sueltas, sin tildes y con errores de tipeo."
+          className="w-full max-w-md"
+        />
+        <FilterSelect
+          id="filtro-movimiento"
+          etiqueta="Tipo de cuenta"
+          parametro="movimiento"
+          opciones={[
+            { valor: "", etiqueta: "Todas" },
+            { valor: "true", etiqueta: "Solo de movimiento" },
+            { valor: "false", etiqueta: "Solo agrupadoras" },
+          ]}
+        />
         {consulta.q || consulta.movimiento !== undefined ? (
-          <Button asChild variant="ghost">
+          <Button asChild variant="ghost" className="mt-6">
             <Link href="?">Limpiar</Link>
           </Button>
         ) : null}
-      </form>
+      </div>
 
       <Card className="overflow-hidden">
         {pagina.total === 0 ? (
