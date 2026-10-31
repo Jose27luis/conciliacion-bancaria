@@ -1,7 +1,9 @@
 "use server";
 
 import {
+  crearCuentaContableSchema,
   crearTipoComprobanteSchema,
+  editarCuentaContableSchema,
   cuentaContableSchema,
   cuentaTesoreriaSchema,
   destinosCuentaSchema,
@@ -53,6 +55,33 @@ export async function cambiarActivacionCuentaContable(codigo: string, _estado: E
     await api(`/chart-of-accounts/${codigo}/activation`, cuentaContableSchema, { metodo: "PATCH", json: { activo } });
     revalidatePath(RUTAS.plan);
   }, activo ? `Cuenta ${codigo} activada.` : `Cuenta ${codigo} desactivada.`);
+}
+
+function entradaCuentaContable(datos: FormData) {
+  return {
+    denominacion: texto(datos, "denominacion"),
+    tipo: texto(datos, "tipo"),
+    clase: texto(datos, "clase"),
+    moneda: texto(datos, "moneda"),
+    analitica: datos.get("analitica") === "on",
+    centroCosto: datos.get("centroCosto") === "on",
+  };
+}
+
+export async function guardarCuentaContable(codigo: string | null, _estado: EstadoFormulario, datos: FormData): Promise<EstadoFormulario> {
+  const entrada = codigo
+    ? editarCuentaContableSchema.safeParse(entradaCuentaContable(datos))
+    : crearCuentaContableSchema.safeParse({ ...entradaCuentaContable(datos), codigo: texto(datos, "codigo") });
+  if (!entrada.success) {
+    return falloDeZod(entrada.error);
+  }
+  return ejecutarAccion(async () => {
+    const cuenta = await api(codigo ? `/chart-of-accounts/${codigo}` : "/chart-of-accounts", cuentaContableSchema, { metodo: codigo ? "PUT" : "POST", json: entrada.data });
+    revalidatePath(RUTAS.plan);
+    if (!codigo && cuenta.padreCodigo) {
+      revalidatePath(RUTAS.tesoreria);
+    }
+  }, codigo ? `Cuenta ${codigo} actualizada.` : "Cuenta creada.");
 }
 
 export async function cambiarDestinos(codigo: string, _estado: EstadoFormulario, datos: FormData): Promise<EstadoFormulario> {
