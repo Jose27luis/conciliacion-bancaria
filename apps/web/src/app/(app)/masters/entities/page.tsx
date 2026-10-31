@@ -1,15 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Search } from "lucide-react";
 import { entidadesQuerySchema, paginaEntidadesSchema, ROLES_EDITAN_MAESTROS } from "@conciliacion/contracts";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EntityDialog } from "@/modules/entities/ui/entity-dialog";
 import { api } from "@/shared/api/server-client";
 import { exigirSesion } from "@/shared/auth/session";
+import { LiveSearch } from "@/shared/ui/live-search";
 import { PageHeader } from "@/shared/ui/page-header";
 import { Pagination } from "@/shared/ui/pagination";
 
@@ -44,21 +40,14 @@ export default async function EntitiesPage({ searchParams }: Props) {
         descripcion="Se crean solos al registrar. Aquí se corrige la razón social y los detalles que el sistema aprendió."
       />
 
-      <form className="flex flex-wrap items-end gap-3" role="search">
-        <div className="grid gap-1.5">
-          <Label htmlFor="buscar-entidad">Buscar por documento o razón social</Label>
-          <Input id="buscar-entidad" name="q" defaultValue={consulta.q} className="w-72" />
-        </div>
-        <Button type="submit" variant="secondary">
-          <Search className="size-4" aria-hidden="true" />
-          Buscar
-        </Button>
-        {consulta.q ? (
-          <Button asChild variant="ghost">
-            <Link href="?">Limpiar</Link>
-          </Button>
-        ) : null}
-      </form>
+      <div role="search">
+        <LiveSearch
+          id="buscar-entidad"
+          etiqueta="Buscar por documento o razón social"
+          ayuda="Busca mientras escribes; acepta palabras sueltas, sin tildes y con errores de tipeo."
+          className="w-full max-w-md"
+        />
+      </div>
 
       <Card className="overflow-hidden">
         {pagina.total === 0 ? (
