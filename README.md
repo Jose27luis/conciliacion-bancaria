@@ -10,7 +10,7 @@ Aplicativo web de **conciliación bancaria** para registrar los movimientos de b
 | **Frontend** | Next.js (App Router) + shadcn/ui + Tailwind CSS |
 | **Base de datos** | PostgreSQL |
 | **Monorepo** | pnpm workspaces (`apps/api`, `apps/web`, `packages/contracts`) |
-| **Estado** | Fases 1 a 5 implementadas: sesión, usuarios, plan contable con amarres, catálogos SUNAT, cuentas de tesorería, Registro rápido, Libro de movimientos (edición, anulación y exportación a Excel), proveedores, plantillas de atajos e importación del Excel histórico. |
+| **Estado** | Fases 1 a 6 implementadas: sesión, usuarios, plan contable con amarres, catálogos SUNAT, cuentas de tesorería, Registro rápido, Libro de movimientos (edición, anulación y exportación a Excel), proveedores, plantillas de atajos, importación del Excel histórico, saldos por cuenta y cierre de meses. |
 
 ---
 
@@ -301,6 +301,9 @@ erDiagram
         string cuenta_contable_id FK "1041 / 1011"
         int orden
         bool activa
+        decimal saldo_apertura "al día 1 del mes de apertura"
+        int apertura_anio
+        int apertura_mes
     }
     periodos {
         uuid id PK
@@ -566,18 +569,25 @@ El `UPDATE` bloquea la fila del periodo durante la transacción, así dos usuari
 ```mermaid
 sequenceDiagram
     actor C as Contador
+    participant W as Resumen y cierre
     participant A as API
     participant DB as PostgreSQL
-    C->>A: POST /periods/2026-07/close
-    A->>DB: ¿Movimientos con pendiente = true?
-    alt Hay pendientes
-        A-->>C: ⚠️ Lista de pendientes (SIN BOLETA AUN…)
-        C->>A: Confirmar cierre
-    end
-    A->>DB: UPDATE periodos SET estado = CERRADO
+    C->>W: Revisa saldos de junio por cuenta
+    C->>W: Cerrar Junio 2026
+    W->>A: POST /periods/2026/6/close
+    A->>A: ¿El mes ya empezó?
+    A->>DB: BEGIN · bloquea la fila del periodo
+    A->>DB: UPDATE periodos SET estado = CERRADO, cerrado_por
     A->>DB: INSERT auditoria (CERRAR)
-    A-->>C: Mes cerrado · totales por cuenta
+    A->>DB: COMMIT
+    A-->>W: Mes cerrado
+    Note over A,DB: Registrar, editar, anular o importar en junio<br/>bloquea el mismo periodo y responde 409
+    C->>W: Reabrir (solo ADMIN) con motivo
+    W->>A: POST /periods/2026/6/reopen
+    A->>DB: estado = ABIERTO · auditoria (REABRIR, motivo)
 ```
+
+**Saldos**: cada cuenta tiene un saldo de apertura al día 1 de un mes (Cuentas de tesorería → Apertura). Desde ese mes, `saldo inicial = apertura + ingresos − egresos de los meses anteriores` y `saldo final = saldo inicial + ingresos − egresos del mes`, solo con vouchers registrados y líneas vigentes. Sin apertura, el resumen muestra los movimientos pero no inventa saldos.
 
 ---
 
@@ -608,7 +618,7 @@ flowchart LR
 | **Registro rápido** | Hoja de captura por cuenta y mes, autocompletado, vouchers con varias líneas, validación, avisos de duplicado, atajos y registro por lote. | Implementado (fase 2) |
 | **Libro de movimientos** | Vouchers del mes con filtros (cuenta, estado y búsqueda por voucher, documento, razón social, analítico, detalle o CTA), totales por moneda, edición, anulación con motivo y exportación a Excel con las columnas del modelo. | Implementado (fase 3) |
 | **Maestros** | Proveedores (razón social y detalles frecuentes: corregir o desactivar), plan contable (importación y amarre de destino), medios de pago, tipos de comprobante y plantillas de atajos. | Implementado (fase 4) |
-| **Resumen y cierre** | Totales de ingreso, egreso y neto por cuenta y mes, saldo inicial y final, pendientes y cierre de periodo. | Por diseñar |
+| **Resumen y cierre** | Por mes y cuenta: saldo inicial, ingresos, egresos y saldo final desde el saldo de apertura; tabla del año; estado de cada mes; cerrar (ADMIN y CONTADOR) y reabrir con motivo (ADMIN). | Implementado (fase 6) |
 | **Configuración** | Cuentas de tesorería, usuarios y roles, importación del Excel histórico. | Por diseñar |
 
 ### 9.1 Atajos de teclado
@@ -672,7 +682,12 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `GET` `POST` | `/imports` · `/imports/:id` | Historial y subida del Excel con vista previa |
 | `POST` | `/imports/:id/confirm` · `/imports/:id/discard` | Confirmar con la cuenta de cada hoja, o descartar |
 
-**Previstos** para la siguiente fase: saldos por cuenta, resumen mensual y cierre y reapertura de periodos.
+| `PUT` | `/treasury-accounts/:id/opening` | Saldo de apertura de una cuenta |
+| `GET` | `/periods?anio=` | Los 12 meses con estado y conteos |
+| `POST` | `/periods/:anio/:mes/close` · `/reopen` | Cerrar (ADMIN, CONTADOR) o reabrir con motivo (ADMIN) |
+| `GET` | `/reports/summary?anio=&mes=` · `/reports/year?anio=` | Saldos del mes por cuenta y resumen anual |
+
+**Previsto**: la conciliación contra el extracto bancario (fase 7) depende de la decisión pendiente 1.
 
 ### 10.1 Edición y anulación
 
@@ -727,10 +742,11 @@ conciliacion-bancaria/
 │   │       │   ├── audit/            registro de acciones
 │   │       │   ├── identity/         login, usuarios, roles
 │   │       │   ├── masters/          plan contable, catálogos SUNAT, cuentas de tesorería
-│   │       │   ├── periods/          periodos y correlativo mensual
+│   │       │   ├── periods/          periodos, correlativo mensual, cierre y reapertura
 │   │       │   ├── entities/         proveedores y detalles frecuentes
 │   │       │   ├── templates/        plantillas de atajos Alt+1…9
 │   │       │   ├── imports/          lectura del Excel modelo, vista previa e importación
+│   │       │   ├── reports/          saldos por cuenta, resumen mensual y anual
 │   │       │   └── ledger/           hoja, registro, edición, anulación y exportación a Excel
 │   │       └── shared/               prisma, config, errores, documentación Swagger
 │   └── web/                          Next.js + shadcn/ui
@@ -741,6 +757,7 @@ conciliacion-bancaria/
 │           │   └── (app)/
 │           │       ├── quick-entry/  Registro rápido
 │           │       ├── ledger/       Libro de movimientos y descarga del Excel
+│           │       ├── summary/      Resumen y cierre
 │           │       ├── masters/      proveedores, plantillas, plan contable, medios de pago, tipos de comprobante
 │           │       └── settings/     cuentas de tesorería, usuarios, importar Excel
 │           ├── modules/              lógica por módulo (actions.ts y ui/)
@@ -864,6 +881,7 @@ flowchart LR
     style F3 fill:#d6f5ec,stroke:#16a085,color:#000
     style F4 fill:#d6f5ec,stroke:#16a085,color:#000
     style F5 fill:#d6f5ec,stroke:#16a085,color:#000
+    style F6 fill:#d6f5ec,stroke:#16a085,color:#000
     style F7 stroke-dasharray: 5 5
 ```
 
@@ -881,7 +899,7 @@ Ya resueltas: el T.C. se sigue digitando a mano (sin conexión a SUNAT), los imp
 |---|---|---|---|
 | 1 | ¿Quieren **conciliar contra el extracto bancario** (importar el CSV/Excel del banco y cruzarlo), o "conciliación" es solo el libro de bancos? | El Excel actual no compara contra el banco; sería un módulo nuevo. | 7 |
 | 4 | ¿Hacia qué sistema contable se exporta y en qué formato? | El plan contable tiene formato de importación (`COD_CTA`, `DEN_CTA`, `TIP_CTA`, `FLAG_CUENTA_ANALITICA`…). | 3 |
-| 5 | ¿Cuál es el saldo inicial de cada cuenta al 01/01/2026? | Hace falta para el resumen y los saldos. | 6 |
+| 5 | ¿Cuál es el saldo inicial de cada cuenta al 01/01/2026? | Se carga en Cuentas de tesorería → Apertura; sin él, el resumen no muestra saldos. | 6 (pendiente del cliente) |
 | 6 | ¿Cuántos usuarios hay y quién cierra el mes? | Define los roles. | 1 |
 | 7 | ¿Se reactivan las cuentas ocultas (INNOVATE, TURISMO EMPRENDE, DML)? | Hoy son hojas ocultas con datos de otros años. | 1 |
 | 9 | ¿Consulta automática de RUC/DNI (PeruDevs, con costo por consulta)? | Ahorra digitar razones sociales nuevas. | 4 |
