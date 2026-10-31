@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cambiarActivacionCuentaContable } from "@/modules/masters/actions";
 import { ChartImportDialog } from "@/modules/masters/ui/chart-import-dialog";
+import { DestinationsDialog } from "@/modules/masters/ui/destinations-dialog";
 import { api } from "@/shared/api/server-client";
 import { exigirSesion } from "@/shared/auth/session";
 import { ActivationButton } from "@/shared/ui/activation-button";
@@ -104,6 +105,7 @@ export default async function ChartOfAccountsPage({ searchParams }: Props) {
                 <TableHead>Tipo</TableHead>
                 <TableHead>Clase</TableHead>
                 <TableHead>Uso</TableHead>
+                <TableHead>Amarre</TableHead>
                 <TableHead>Estado</TableHead>
                 {editable ? <TableHead className="text-right">Acciones</TableHead> : null}
               </TableRow>
@@ -126,12 +128,20 @@ export default async function ChartOfAccountsPage({ searchParams }: Props) {
                       <span className="text-xs text-muted-foreground">Agrupadora</span>
                     )}
                   </TableCell>
+                  <TableCell className="tabular-nums text-sistema">
+                    {cuenta.destinoDebeCodigo && cuenta.destinoHaberCodigo ? `${cuenta.destinoDebeCodigo} / ${cuenta.destinoHaberCodigo}` : ""}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge activo={cuenta.activa} />
                   </TableCell>
                   {editable ? (
-                    <TableCell className="text-right">
-                      <ActivationButton accion={cambiarActivacionCuentaContable.bind(null, cuenta.codigo)} activo={cuenta.activa} nombre={`la cuenta ${cuenta.codigo}`} />
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {cuenta.deMovimiento ? (
+                          <DestinationsDialog codigo={cuenta.codigo} denominacion={cuenta.denominacion} destinoDebe={cuenta.destinoDebeCodigo} destinoHaber={cuenta.destinoHaberCodigo} />
+                        ) : null}
+                        <ActivationButton accion={cambiarActivacionCuentaContable.bind(null, cuenta.codigo)} activo={cuenta.activa} nombre={`la cuenta ${cuenta.codigo}`} />
+                      </div>
                     </TableCell>
                   ) : null}
                 </TableRow>
