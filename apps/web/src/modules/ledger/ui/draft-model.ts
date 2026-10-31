@@ -1,9 +1,12 @@
+import type { Voucher } from "@conciliacion/contracts";
 import type { Moneda } from "@conciliacion/contracts/enums";
 import type { LineaBorrador, VoucherBorrador } from "@conciliacion/contracts/rules";
 
 export type LineaEdicion = LineaBorrador & { id: string };
 
-export type BorradorEdicion = Omit<VoucherBorrador, "lineas"> & { id: string; lineas: LineaEdicion[] };
+export type BorradorEdicion = Omit<VoucherBorrador, "lineas"> & { id: string; lineas: LineaEdicion[]; voucherId?: string; codigo?: string };
+
+export type EntradaConVoucher = VoucherBorrador & { voucherId?: string };
 
 export type CampoCabecera = "nroOperacion" | "fechaOperacion" | "analitico" | "documento" | "razonSocial" | "medioPagoCodigo" | "tipoCambio";
 export type CampoDeLinea = "detalle" | "ingreso" | "egreso" | "cuentaContableCodigo";
@@ -59,8 +62,32 @@ export function estaVacio(borrador: BorradorEdicion): boolean {
   return cabeceraVacia && borrador.lineas.every((linea) => [linea.detalle, linea.ingreso, linea.egreso, linea.cuentaContableCodigo].every((valor) => valor.trim() === ""));
 }
 
-export function aEntrada(borrador: BorradorEdicion, moneda: Moneda): VoucherBorrador {
+export function borradorDesdeVoucher(voucher: Voucher): BorradorEdicion {
+  const sinCero = (valor: string): string => (Number(valor) === 0 ? "" : valor);
   return {
+    id: nuevoId("borrador"),
+    voucherId: voucher.id,
+    codigo: voucher.codigo,
+    nroOperacion: voucher.nroOperacion ?? "",
+    fechaOperacion: voucher.fechaOperacion,
+    analitico: voucher.analitico,
+    documento: voucher.entidad.numeroDocumento,
+    razonSocial: voucher.entidad.razonSocial,
+    medioPagoCodigo: voucher.medioPagoCodigo,
+    tipoCambio: voucher.moneda === "PEN" ? "" : voucher.tipoCambio,
+    lineas: voucher.lineas.map((linea) => ({
+      id: nuevoId("linea"),
+      detalle: linea.detalle,
+      ingreso: sinCero(linea.ingreso),
+      egreso: sinCero(linea.egreso),
+      cuentaContableCodigo: linea.cuentaContableCodigo,
+    })),
+  };
+}
+
+export function aEntrada(borrador: BorradorEdicion, moneda: Moneda): EntradaConVoucher {
+  return {
+    ...(borrador.voucherId ? { voucherId: borrador.voucherId } : {}),
     nroOperacion: borrador.nroOperacion,
     fechaOperacion: borrador.fechaOperacion,
     analitico: borrador.analitico,
@@ -84,8 +111,15 @@ function esBorradorEdicion(valor: unknown): valor is BorradorEdicion {
     return false;
   }
   const textos = ["id", "nroOperacion", "fechaOperacion", "analitico", "documento", "razonSocial", "medioPagoCodigo", "tipoCambio"];
+  const opcionales = ["voucherId", "codigo"];
   const lineas: unknown = Reflect.get(valor, "lineas");
-  return textos.every((clave) => typeof Reflect.get(valor, clave) === "string") && Array.isArray(lineas) && lineas.length > 0 && lineas.every(esLineaEdicion);
+  return (
+    textos.every((clave) => typeof Reflect.get(valor, clave) === "string") &&
+    opcionales.every((clave) => ["string", "undefined"].includes(typeof Reflect.get(valor, clave))) &&
+    Array.isArray(lineas) &&
+    lineas.length > 0 &&
+    lineas.every(esLineaEdicion)
+  );
 }
 
 export function leerBorradoresGuardados(clave: string): BorradorEdicion[] {
