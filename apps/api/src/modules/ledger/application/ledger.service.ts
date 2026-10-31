@@ -1,31 +1,42 @@
 import { Injectable } from "@nestjs/common";
 import {
   formatoVoucher,
+  MESES,
   montoACentavos,
-  normalizarAnalitico,
   normalizarDocumento,
   normalizarMonto,
+  normalizarTexto,
   parsearAnalitico,
+  puedeModificarVoucher,
   textoAnalitico,
   validarVoucher,
   type Analitico,
+  type AnularVoucherEntrada,
   type AvisoLote,
+  type ExportacionQuery,
   type Hoja,
   type HojaQuery,
+  type Libro,
+  type LibroQuery,
   type LoteRegistrado,
   type LoteVouchersEntrada,
   type Moneda,
   type UsuarioSesion,
   type Voucher,
-  type VoucherBorrador,
+  type VoucherEntrada,
 } from "@conciliacion/contracts";
+import type { Prisma } from "@prisma/client";
 import { AuditService } from "../../audit";
 import { EntitiesService } from "../../entities";
 import { PeriodsService } from "../../periods";
 import { errores } from "../../../shared/http/api-error";
-import { LedgerRepository, type CuentaParaHoja, type VoucherRegistro } from "../infrastructure/ledger.repository";
+import type { Transaccion } from "../../../shared/prisma/prisma.service";
+import { LedgerExcelWriter } from "../infrastructure/ledger-excel.writer";
+import { LedgerRepository, type CuentaParaHoja, type DatosCabecera, type DatosLinea, type VoucherRegistro } from "../infrastructure/ledger.repository";
 
 const TIPO_CAMBIO_SOLES = "1.000";
+
+export type ArchivoExportado = { nombre: string; contenido: Buffer };
 
 function aVoucher(registro: VoucherRegistro): Voucher {
   const analitico: Analitico | null =
@@ -39,6 +50,8 @@ function aVoucher(registro: VoucherRegistro): Voucher {
     anio: registro.periodo.anio,
     mes: registro.periodo.mes,
     cuentaTesoreriaId: registro.cuentaTesoreriaId,
+    cuentaTesoreriaNombre: registro.cuentaTesoreria.nombre,
+    moneda: registro.cuentaTesoreria.moneda,
     fechaOperacion: registro.fechaOperacion.toISOString().slice(0, 10),
     nroOperacion: registro.nroOperacion,
     analitico: textoAnalitico(analitico),
@@ -47,16 +60,33 @@ function aVoucher(registro: VoucherRegistro): Voucher {
     medioPagoDescripcion: registro.medioPago.descripcion,
     tipoCambio: registro.tipoCambio.toFixed(3),
     estado: registro.estado,
-    lineas: registro.lineas.map((linea) => ({
+    motivoAnulacion: registro.motivoAnulacion,
+    lineas: registro.lineas.map((linea, indice) => ({
       id: linea.id,
-      linea: linea.linea,
+      linea: indice + 1,
       detalle: linea.detalle,
       ingreso: linea.ingreso.toFixed(2),
       egreso: linea.egreso.toFixed(2),
       cuentaContableCodigo: linea.cuentaContableCodigo,
       cuentaContableDenominacion: linea.cuentaContable.denominacion,
     })),
+    creadoPorId: registro.creadoPorId,
+    creadoPorNombre: registro.creadoPor.nombre,
     creadoEn: registro.creadoEn.toISOString(),
+  };
+}
+
+function resumenAuditoria(voucher: Voucher): Prisma.InputJsonValue {
+  return {
+    codigo: voucher.codigo,
+    cuenta: voucher.cuentaTesoreriaNombre,
+    fechaOperacion: voucher.fechaOperacion,
+    nroOperacion: voucher.nroOperacion,
+    analitico: voucher.analitico,
+    documento: voucher.entidad.numeroDocumento,
+    medioPagoCodigo: voucher.medioPagoCodigo,
+    tipoCambio: voucher.tipoCambio,
+    lineas: voucher.lineas.map((linea) => ({ detalle: linea.detalle, ingreso: linea.ingreso, egreso: linea.egreso, cuenta: linea.cuentaContableCodigo })),
   };
 }
 
@@ -69,6 +99,15 @@ function mesDe(fecha: string): { anio: number; mes: number } {
   return { anio, mes };
 }
 
+function datosLinea(linea: VoucherEntrada["lineas"][number]): DatosLinea {
+  return {
+    detalle: linea.detalle.trim().replace(/\s+/g, " "),
+    ingreso: normalizarMonto(linea.ingreso) || "0",
+    egreso: normalizarMonto(linea.egreso) || "0",
+    cuentaContableCodigo: linea.cuentaContableCodigo.trim(),
+  };
+}
+
 @Injectable()
 export class LedgerService {
   constructor(
@@ -76,6 +115,7 @@ export class LedgerService {
     private readonly periodos: PeriodsService,
     private readonly entidades: EntitiesService,
     private readonly auditoria: AuditService,
+    private readonly excel: LedgerExcelWriter,
   ) {}
 
   async hoja(consulta: HojaQuery): Promise<Hoja> {
@@ -85,6 +125,25 @@ export class LedgerService {
       this.repositorio.vouchersDeHoja(cuenta.id, consulta.anio, consulta.mes),
     ]);
     return { cuenta: { id: cuenta.id, nombre: cuenta.nombre, moneda: cuenta.moneda }, periodo, vouchers: vouchers.map(aVoucher) };
+  }
+
+  async libro(consulta: LibroQuery): Promise<Libro> {
+    const { items, total, totales } = await this.repositorio.libro(consulta);
+    return {
+      items: items.map(aVoucher),
+      total,
+      pagina: consulta.pagina,
+      porPagina: consulta.porPagina,
+      totales: totales.map((fila) => ({ moneda: fila.moneda, ingreso: fila.ingreso.toFixed(2), egreso: fila.egreso.toFixed(2) })),
+    };
+  }
+
+  async obtener(id: string): Promise<Voucher> {
+    const voucher = await this.repositorio.voucherPorId(id);
+    if (!voucher) {
+      throw errores.noEncontrado("El voucher no existe.");
+    }
+    return aVoucher(voucher);
   }
 
   async avisos(lote: LoteVouchersEntrada): Promise<AvisoLote[]> {
@@ -106,12 +165,13 @@ export class LedgerService {
       const analitico = analiticos[indice];
       if (analitico && analitico !== "SIN_COMPROBANTE") {
         const clave = textoAnalitico(analitico);
-        const previo = porAnalitico.find((fila) => fila.tipoComprobanteCodigo === analitico.tipo && fila.serie === analitico.serie && fila.numeroComprobante === analitico.numero);
+        const previo = porAnalitico.find(
+          (fila) => fila.id !== voucher.voucherId && fila.tipoComprobanteCodigo === analitico.tipo && fila.serie === analitico.serie && fila.numeroComprobante === analitico.numero,
+        );
         if (previo) {
           avisos.push({ indice, mensaje: `Posible duplicado: el analítico ${clave} ya está registrado en el voucher ${formatoVoucher(previo.mes, previo.numero)} de ${previo.cuenta}.` });
         }
-        const otroIndice = vistos.get(clave);
-        if (otroIndice !== undefined) {
+        if (vistos.has(clave)) {
           avisos.push({ indice, mensaje: `Posible duplicado: el analítico ${clave} se repite en otra fila de la hoja.` });
         } else {
           vistos.set(clave, indice);
@@ -124,6 +184,7 @@ export class LedgerService {
         const egreso = montoACentavos(linea.egreso);
         const igual = porImporte.find(
           (fila) =>
+            fila.id !== voucher.voucherId &&
             fila.numeroDocumento === documento &&
             fila.fechaOperacion.toISOString().slice(0, 10) === voucher.fechaOperacion &&
             Math.round(fila.ingreso.toNumber() * 100) === ingreso &&
@@ -143,7 +204,11 @@ export class LedgerService {
     if (!cuenta.activa) {
       throw errores.conflicto(`La cuenta ${cuenta.nombre} está desactivada.`);
     }
-    await this.validarLote(lote, cuenta.moneda);
+    const detalle = await this.erroresDeValidacion(lote.vouchers, cuenta.moneda, { anio: lote.anio, mes: lote.mes });
+    const conError = new Set(Object.keys(detalle).map((clave) => clave.split(".")[1])).size;
+    if (conError > 0) {
+      throw errores.validacion(`${conError === 1 ? "Un voucher tiene" : `${conError} vouchers tienen`} errores. No se registró nada.`, detalle);
+    }
 
     const creados = await this.repositorio.transaccion(async (tx) => {
       const porPeriodo = new Map<string, number[]>();
@@ -171,41 +236,18 @@ export class LedgerService {
         if (!destino) {
           throw new Error(`No se asignó correlativo al voucher ${indice}`);
         }
-        const entidad = await this.entidades.usar(tx, voucher.documento, voucher.razonSocial);
-        const analitico = parsearAnalitico(voucher.analitico);
-        const comprobante = analitico && analitico !== "SIN_COMPROBANTE" ? analitico : null;
-        const medioPagoCodigo = voucher.medioPagoCodigo.trim();
+        const cabecera = await this.cabecera(tx, voucher, cuenta.moneda, null);
         const creado = await this.repositorio.crearVoucher(tx, {
+          ...cabecera,
           periodoId: destino.periodoId,
           numero: destino.numero,
           cuentaTesoreriaId: cuenta.id,
-          fechaOperacion: fechaDate(voucher.fechaOperacion),
-          nroOperacion: voucher.nroOperacion.trim() || null,
-          entidadId: entidad.id,
-          tipoComprobanteCodigo: comprobante?.tipo ?? null,
-          serie: comprobante?.serie ?? null,
-          numeroComprobante: comprobante?.numero ?? null,
-          medioPagoCodigo,
-          tipoCambio: cuenta.moneda === "PEN" ? TIPO_CAMBIO_SOLES : voucher.tipoCambio.trim(),
           creadoPorId: actor.id,
-          lineas: voucher.lineas.map((linea, posicion) => ({
-            linea: posicion + 1,
-            detalle: linea.detalle.trim().replace(/\s+/g, " "),
-            ingreso: normalizarMonto(linea.ingreso) || "0",
-            egreso: normalizarMonto(linea.egreso) || "0",
-            cuentaContableCodigo: linea.cuentaContableCodigo.trim(),
-          })),
+          lineas: voucher.lineas.map((linea, posicion) => ({ ...datosLinea(linea), linea: posicion + 1 })),
         });
-        for (const linea of voucher.lineas) {
-          await this.entidades.aprender(tx, entidad.id, linea.detalle, linea.cuentaContableCodigo.trim(), medioPagoCodigo);
-        }
-        await this.auditoria.registrar(tx, {
-          usuarioId: actor.id,
-          entidad: "voucher",
-          entidadId: creado.id,
-          accion: "REGISTRAR",
-          despues: { codigo: formatoVoucher(creado.periodo.mes, creado.numero), cuenta: cuenta.nombre, analitico: normalizarAnalitico(voucher.analitico), documento: entidad.numeroDocumento },
-        });
+        await this.aprender(tx, cabecera.entidadId, cabecera.medioPagoCodigo, voucher.lineas.map(datosLinea));
+        const salida = aVoucher(creado);
+        await this.auditoria.registrar(tx, { usuarioId: actor.id, entidad: "voucher", entidadId: creado.id, accion: "REGISTRAR", despues: resumenAuditoria(salida) });
         resultado.push(creado);
       }
       return resultado;
@@ -214,38 +256,168 @@ export class LedgerService {
     return { vouchers: creados.map(aVoucher) };
   }
 
-  private async validarLote(lote: LoteVouchersEntrada, moneda: Moneda): Promise<void> {
+  async editar(id: string, entrada: VoucherEntrada, actor: UsuarioSesion): Promise<Voucher> {
+    const actual = await this.modificable(id, actor);
+    const { anio, mes } = mesDe(entrada.fechaOperacion);
+    if (anio !== actual.periodo.anio || mes !== actual.periodo.mes) {
+      const mensaje = `La fecha debe quedar en ${MESES[actual.periodo.mes - 1] ?? actual.periodo.mes} ${actual.periodo.anio}. Para moverlo a otro mes, anúlalo y regístralo de nuevo.`;
+      throw errores.validacion(mensaje, { fechaOperacion: mensaje });
+    }
+    const detalle = await this.erroresDeValidacion([entrada], actual.cuentaTesoreria.moneda, actual.periodo);
+    if (Object.keys(detalle).length > 0) {
+      const sinIndice = Object.fromEntries(Object.entries(detalle).map(([clave, mensaje]) => [clave.replace(/^vouchers\.0\./, ""), mensaje]));
+      throw errores.validacion("El voucher tiene errores. No se guardaron los cambios.", sinIndice);
+    }
+
+    const editado = await this.repositorio.transaccion(async (tx) => {
+      await this.repositorio.bloquearVoucher(tx, id);
+      const vigente = await this.repositorio.buscarVoucher(tx, id);
+      if (!vigente || vigente.estado !== "REGISTRADO") {
+        throw errores.conflicto("El voucher cambió mientras lo editabas. Recarga la hoja.");
+      }
+      const documentoActual = vigente.entidad.numeroDocumento;
+      const cabecera = await this.cabecera(tx, entrada, vigente.cuentaTesoreria.moneda, normalizarDocumento(entrada.documento) === documentoActual ? vigente.entidad.id : null);
+      await this.repositorio.actualizarCabecera(tx, id, cabecera);
+
+      const nuevas = entrada.lineas.map(datosLinea);
+      let ultima = await this.repositorio.ultimaLinea(tx, id);
+      const aprendidas: DatosLinea[] = [];
+      for (const [posicion, datos] of nuevas.entries()) {
+        const existente = vigente.lineas[posicion];
+        if (existente) {
+          await this.repositorio.actualizarLinea(tx, existente.id, datos);
+          if (normalizarTexto(existente.detalle) !== normalizarTexto(datos.detalle) || existente.cuentaContableCodigo !== datos.cuentaContableCodigo) {
+            aprendidas.push(datos);
+          }
+        } else {
+          ultima += 1;
+          await this.repositorio.crearLinea(tx, id, ultima, datos);
+          aprendidas.push(datos);
+        }
+      }
+      await this.repositorio.retirarLineas(tx, vigente.lineas.slice(nuevas.length).map((linea) => linea.id));
+      await this.aprender(tx, cabecera.entidadId, cabecera.medioPagoCodigo, cabecera.entidadId === vigente.entidad.id ? aprendidas : nuevas);
+
+      const resultado = await this.repositorio.buscarVoucher(tx, id);
+      if (!resultado) {
+        throw errores.noEncontrado("El voucher no existe.");
+      }
+      await this.auditoria.registrar(tx, {
+        usuarioId: actor.id,
+        entidad: "voucher",
+        entidadId: id,
+        accion: "EDITAR",
+        antes: resumenAuditoria(aVoucher(vigente)),
+        despues: resumenAuditoria(aVoucher(resultado)),
+      });
+      return resultado;
+    });
+    return aVoucher(editado);
+  }
+
+  async anular(id: string, entrada: AnularVoucherEntrada, actor: UsuarioSesion): Promise<Voucher> {
+    await this.modificable(id, actor);
+    const anulado = await this.repositorio.transaccion(async (tx) => {
+      await this.repositorio.bloquearVoucher(tx, id);
+      const vigente = await this.repositorio.buscarVoucher(tx, id);
+      if (!vigente || vigente.estado !== "REGISTRADO") {
+        throw errores.conflicto("El voucher ya fue anulado.");
+      }
+      await this.repositorio.anular(tx, id, entrada.motivo);
+      const resultado = await this.repositorio.buscarVoucher(tx, id);
+      if (!resultado) {
+        throw errores.noEncontrado("El voucher no existe.");
+      }
+      await this.auditoria.registrar(tx, {
+        usuarioId: actor.id,
+        entidad: "voucher",
+        entidadId: id,
+        accion: "ANULAR",
+        antes: resumenAuditoria(aVoucher(vigente)),
+        despues: { motivo: entrada.motivo },
+      });
+      return resultado;
+    });
+    return aVoucher(anulado);
+  }
+
+  async exportar(consulta: ExportacionQuery): Promise<ArchivoExportado> {
+    const cuentas = await this.repositorio.cuentasParaExportar(consulta.cuenta);
+    if (consulta.cuenta && cuentas.length === 0) {
+      throw errores.noEncontrado("La cuenta de tesorería no existe.");
+    }
+    const vouchers = await this.repositorio.vouchersParaExportar(consulta.anio, consulta.mes, consulta.cuenta);
+    const hojas = cuentas.map((cuenta) => ({ nombre: cuenta.nombre, vouchers: vouchers.filter((voucher) => voucher.cuentaTesoreriaId === cuenta.id) }));
+    const contenido = await this.excel.escribir(hojas);
+    const mes = String(consulta.mes).padStart(2, "0");
+    const sufijo = consulta.cuenta && cuentas[0] ? `-${cuentas[0].nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}` : "";
+    return { nombre: `conciliacion-${consulta.anio}-${mes}${sufijo}.xlsx`, contenido };
+  }
+
+  private async modificable(id: string, actor: UsuarioSesion): Promise<VoucherRegistro> {
+    const voucher = await this.repositorio.voucherPorId(id);
+    if (!voucher) {
+      throw errores.noEncontrado("El voucher no existe.");
+    }
+    if (voucher.estado === "ANULADO") {
+      throw errores.conflicto("El voucher está anulado y ya no se puede modificar.");
+    }
+    if (voucher.periodo.estado === "CERRADO") {
+      throw errores.conflicto(`${MESES[voucher.periodo.mes - 1] ?? voucher.periodo.mes} ${voucher.periodo.anio} está cerrado. No se pueden modificar sus vouchers.`);
+    }
+    if (!puedeModificarVoucher(actor.rol, actor.id, voucher.creadoPorId)) {
+      throw errores.prohibido("Solo puedes modificar los vouchers que registraste tú.");
+    }
+    return voucher;
+  }
+
+  private async cabecera(tx: Transaccion, voucher: VoucherEntrada, moneda: Moneda, entidadExistenteId: string | null): Promise<DatosCabecera> {
+    const entidadId = entidadExistenteId ?? (await this.entidades.usar(tx, voucher.documento, voucher.razonSocial)).id;
+    const analitico = parsearAnalitico(voucher.analitico);
+    const comprobante = analitico && analitico !== "SIN_COMPROBANTE" ? analitico : null;
+    return {
+      fechaOperacion: fechaDate(voucher.fechaOperacion),
+      nroOperacion: voucher.nroOperacion.trim() || null,
+      entidadId,
+      tipoComprobanteCodigo: comprobante?.tipo ?? null,
+      serie: comprobante?.serie ?? null,
+      numeroComprobante: comprobante?.numero ?? null,
+      medioPagoCodigo: voucher.medioPagoCodigo.trim(),
+      tipoCambio: moneda === "PEN" ? TIPO_CAMBIO_SOLES : voucher.tipoCambio.trim(),
+    };
+  }
+
+  private async aprender(tx: Transaccion, entidadId: string, medioPagoCodigo: string, lineas: DatosLinea[]): Promise<void> {
+    for (const linea of lineas) {
+      await this.entidades.aprender(tx, entidadId, linea.detalle, linea.cuentaContableCodigo, medioPagoCodigo);
+    }
+  }
+
+  private async erroresDeValidacion(vouchers: VoucherEntrada[], moneda: Moneda, periodo: { anio: number; mes: number }): Promise<Record<string, string>> {
     const [catalogos, conocidos] = await Promise.all([
       this.repositorio.catalogosActivos(),
-      this.entidades.documentosConocidos(lote.vouchers.map((voucher) => voucher.documento)),
+      this.entidades.documentosConocidos(vouchers.map((voucher) => voucher.documento)),
     ]);
     const cuentasContables = new Set(catalogos.cuentas);
     const mediosPago = new Set(catalogos.medios);
     const tiposComprobante = new Set(catalogos.tipos);
 
     const detalle: Record<string, string> = {};
-    let conError = 0;
-    lote.vouchers.forEach((voucher, indice) => {
-      const borrador: VoucherBorrador = voucher;
-      const problemas = validarVoucher(borrador, {
+    vouchers.forEach((voucher, indice) => {
+      const problemas = validarVoucher(voucher, {
         moneda,
-        periodo: { anio: lote.anio, mes: lote.mes },
+        periodo,
         cuentasContables,
         mediosPago,
         tiposComprobante,
         entidadConocida: conocidos.has(normalizarDocumento(voucher.documento)),
       }).filter((problema) => problema.nivel === "error");
-      if (problemas.length > 0) {
-        conError += 1;
-      }
       for (const problema of problemas) {
         const clave = problema.linea === null ? `vouchers.${indice}.${problema.campo}` : `vouchers.${indice}.lineas.${problema.linea}.${problema.campo}`;
         detalle[clave] ??= problema.mensaje;
       }
     });
-    if (conError > 0) {
-      throw errores.validacion(`${conError === 1 ? "Un voucher tiene" : `${conError} vouchers tienen`} errores. No se registró nada.`, detalle);
-    }
+    return detalle;
   }
 
   private async cuentaExistente(id: string): Promise<CuentaParaHoja> {
@@ -256,3 +428,4 @@ export class LedgerService {
     return cuenta;
   }
 }
+
