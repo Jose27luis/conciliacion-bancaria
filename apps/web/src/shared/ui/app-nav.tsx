@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, BookText, CreditCard, FileText, Landmark, Table, Users, type LucideIcon } from "lucide-react";
+import { BookOpen, BookText, Building2, CreditCard, Keyboard, FileText, Landmark, Table, Users, type LucideIcon } from "lucide-react";
 import type { Rol } from "@conciliacion/contracts";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,8 @@ const GRUPOS: Grupo[] = [
   {
     titulo: "Maestros",
     enlaces: [
+      { href: "/masters/entities", etiqueta: "Proveedores y clientes", icono: Building2 },
+      { href: "/masters/templates", etiqueta: "Plantillas de atajos", icono: Keyboard },
       { href: "/masters/chart-of-accounts", etiqueta: "Plan contable", icono: BookOpen },
       { href: "/masters/payment-methods", etiqueta: "Medios de pago", icono: CreditCard },
       { href: "/masters/voucher-types", etiqueta: "Tipos de comprobante", icono: FileText },
