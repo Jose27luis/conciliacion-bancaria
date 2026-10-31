@@ -5,6 +5,10 @@ export const ROLES_EDITAN_MAESTROS: readonly Rol[] = ["ADMIN", "CONTADOR"];
 
 export const ROLES_REGISTRAN: readonly Rol[] = ["ADMIN", "CONTADOR", "ASISTENTE"];
 
+export function puedeModificarVoucher(rol: Rol, usuarioId: string, creadoPorId: string): boolean {
+  return rol === "ADMIN" || rol === "CONTADOR" || (rol === "ASISTENTE" && usuarioId === creadoPorId);
+}
+
 export const ETIQUETAS_ROL: Record<Rol, string> = {
   ADMIN: "Administrador",
   CONTADOR: "Contador",
