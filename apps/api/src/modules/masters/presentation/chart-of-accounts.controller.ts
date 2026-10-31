@@ -1,7 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiPayloadTooLargeResponse, ApiTags, ApiUnprocessableEntityResponse } from "@nestjs/swagger";
-import { ROLES_EDITAN_MAESTROS, type CuentaContable, type ImportacionPlanResultado, type Pagina, type UsuarioSesion } from "@conciliacion/contracts";
+import {
+  ROLES_EDITAN_MAESTROS,
+  type CuentaContable,
+  type ImportacionPlanResultado,
+  type OpcionCuentaContable,
+  type Pagina,
+  type UsuarioSesion,
+} from "@conciliacion/contracts";
 import { memoryStorage } from "multer";
 import { ZodResponse } from "nestjs-zod";
 import { Roles, UsuarioActual } from "../../identity";
@@ -14,6 +21,7 @@ import {
   CuentasContablesQueryDto,
   ImportacionPlanRechazoDto,
   ImportacionPlanResultadoDto,
+  OpcionCuentaContableDto,
   PaginaCuentasContablesDto,
 } from "./masters.dto";
 
@@ -31,6 +39,14 @@ export class ChartOfAccountsController {
   @ZodResponse({ status: 200, description: "Página de cuentas", type: PaginaCuentasContablesDto })
   listar(@Query() consulta: CuentasContablesQueryDto): Promise<Pagina<CuentaContable>> {
     return this.plan.listar(consulta);
+  }
+
+  @Get("options")
+  @ApiProtegida()
+  @ApiOperation({ summary: "Cuentas para registrar", description: "Todas las cuentas de movimiento activas, solo código y denominación, para autocompletar la CTA." })
+  @ZodResponse({ status: 200, description: "Cuentas de movimiento activas", type: [OpcionCuentaContableDto] })
+  opciones(): Promise<OpcionCuentaContable[]> {
+    return this.plan.opciones();
   }
 
   @Get(":codigo")
