@@ -3,12 +3,13 @@ import { AuditModule } from "../audit";
 import { EntitiesModule } from "../entities";
 import { PeriodsModule } from "../periods";
 import { LedgerService } from "./application/ledger.service";
+import { LedgerExcelWriter } from "./infrastructure/ledger-excel.writer";
 import { LedgerRepository } from "./infrastructure/ledger.repository";
 import { LedgerController } from "./presentation/ledger.controller";
 
 @Module({
   imports: [AuditModule, EntitiesModule, PeriodsModule],
   controllers: [LedgerController],
-  providers: [LedgerRepository, LedgerService],
+  providers: [LedgerRepository, LedgerExcelWriter, LedgerService],
 })
 export class LedgerModule {}
