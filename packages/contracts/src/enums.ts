@@ -3,6 +3,8 @@ export type Rol = (typeof ROLES)[number];
 
 export const ROLES_EDITAN_MAESTROS: readonly Rol[] = ["ADMIN", "CONTADOR"];
 
+export const ROLES_REGISTRAN: readonly Rol[] = ["ADMIN", "CONTADOR", "ASISTENTE"];
+
 export const ETIQUETAS_ROL: Record<Rol, string> = {
   ADMIN: "Administrador",
   CONTADOR: "Contador",
@@ -41,6 +43,14 @@ export const ETIQUETAS_CLASE_CUENTA_CONTABLE: Record<ClaseCuentaContable, string
   INGRESO: "Ingreso",
   GESTION: "Gestión",
 };
+
+export const ESTADOS_PERIODO = ["ABIERTO", "CERRADO"] as const;
+export type EstadoPeriodo = (typeof ESTADOS_PERIODO)[number];
+
+export const ESTADOS_VOUCHER = ["REGISTRADO", "ANULADO"] as const;
+export type EstadoVoucher = (typeof ESTADOS_VOUCHER)[number];
+
+export const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"] as const;
 
 export function esRol(valor: unknown): valor is Rol {
   return typeof valor === "string" && ROLES.some((rol) => rol === valor);
