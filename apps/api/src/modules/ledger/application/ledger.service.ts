@@ -38,6 +38,22 @@ const TIPO_CAMBIO_SOLES = "1.000";
 
 export type ArchivoExportado = { nombre: string; contenido: Buffer };
 
+export type ContextoCatalogos = {
+  cuentasContables: ReadonlySet<string>;
+  mediosPago: ReadonlySet<string>;
+  tiposComprobante: ReadonlySet<string>;
+  documentosConocidos: ReadonlySet<string>;
+};
+
+export type DestinoImportado = {
+  periodoId: string;
+  numero: number;
+  cuentaTesoreriaId: string;
+  moneda: Moneda;
+  creadoPorId: string;
+  importacionId: string;
+};
+
 function aVoucher(registro: VoucherRegistro): Voucher {
   const analitico: Analitico | null =
     registro.tipoComprobanteCodigo && registro.serie && registro.numeroComprobante
@@ -352,6 +368,30 @@ export class LedgerService {
     const mes = String(consulta.mes).padStart(2, "0");
     const sufijo = consulta.cuenta && cuentas[0] ? `-${cuentas[0].nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}` : "";
     return { nombre: `conciliacion-${consulta.anio}-${mes}${sufijo}.xlsx`, contenido };
+  }
+
+  async contextoDeValidacion(documentos: string[]): Promise<ContextoCatalogos> {
+    const [catalogos, conocidos] = await Promise.all([this.repositorio.catalogosActivos(), this.entidades.documentosConocidos(documentos)]);
+    return {
+      cuentasContables: new Set(catalogos.cuentas),
+      mediosPago: new Set(catalogos.medios),
+      tiposComprobante: new Set(catalogos.tipos),
+      documentosConocidos: conocidos,
+    };
+  }
+
+  async crearImportado(tx: Transaccion, voucher: VoucherEntrada, destino: DestinoImportado): Promise<void> {
+    const cabecera = await this.cabecera(tx, voucher, destino.moneda, null);
+    await this.repositorio.crearVoucher(tx, {
+      ...cabecera,
+      periodoId: destino.periodoId,
+      numero: destino.numero,
+      cuentaTesoreriaId: destino.cuentaTesoreriaId,
+      creadoPorId: destino.creadoPorId,
+      importacionId: destino.importacionId,
+      lineas: voucher.lineas.map((linea, posicion) => ({ ...datosLinea(linea), linea: posicion + 1 })),
+    });
+    await this.aprender(tx, cabecera.entidadId, cabecera.medioPagoCodigo, voucher.lineas.map(datosLinea));
   }
 
   private async modificable(id: string, actor: UsuarioSesion): Promise<VoucherRegistro> {
