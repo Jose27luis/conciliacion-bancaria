@@ -205,6 +205,9 @@ model CuentaTesoreria {
   cuentaContableCodigo String              @map("cuenta_contable_codigo") @db.VarChar(8)
   orden                Int                 @default(0) @db.SmallInt
   activa               Boolean             @default(true)
+  saldoApertura        Decimal?            @map("saldo_apertura") @db.Decimal(14, 2)
+  aperturaAnio         Int?                @map("apertura_anio") @db.SmallInt
+  aperturaMes          Int?                @map("apertura_mes") @db.SmallInt
   creadoEn             DateTime            @default(now()) @map("creado_en") @db.Timestamptz(3)
   actualizadoEn        DateTime            @updatedAt @map("actualizado_en") @db.Timestamptz(3)
 
