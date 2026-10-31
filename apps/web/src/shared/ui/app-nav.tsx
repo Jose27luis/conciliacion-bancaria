@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, CreditCard, FileText, Landmark, Users, type LucideIcon } from "lucide-react";
+import { BookOpen, CreditCard, FileText, Landmark, Table, Users, type LucideIcon } from "lucide-react";
 import type { Rol } from "@conciliacion/contracts";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,10 @@ type Enlace = { href: string; etiqueta: string; icono: LucideIcon; roles?: reado
 type Grupo = { titulo: string; enlaces: Enlace[] };
 
 const GRUPOS: Grupo[] = [
+  {
+    titulo: "Registro",
+    enlaces: [{ href: "/quick-entry", etiqueta: "Registro rápido", icono: Table }],
+  },
   {
     titulo: "Maestros",
     enlaces: [
