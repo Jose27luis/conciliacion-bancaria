@@ -12,6 +12,7 @@ import {
   normalizarDocumento,
   normalizarMonto,
   normalizarTexto,
+  puntajeCoincidencia,
   SIN_COMPROBANTE,
   tieneErrores,
   validarVoucher,
@@ -74,6 +75,17 @@ type Props = {
 };
 
 const MAXIMO_SUGERENCIAS = 8;
+
+function ordenarPorCoincidencia<T>(elementos: readonly T[], texto: (elemento: T) => string, consulta: string): T[] {
+  if (!consulta.trim()) {
+    return [...elementos];
+  }
+  return elementos
+    .map((elemento, posicion) => ({ elemento, posicion, puntaje: puntajeCoincidencia(texto(elemento), consulta) }))
+    .filter((candidato) => candidato.puntaje > 0)
+    .sort((a, b) => b.puntaje - a.puntaje || a.posicion - b.posicion)
+    .map((candidato) => candidato.elemento);
+}
 
 function dinero(centavos: number): string {
   return (centavos / 100).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -649,8 +661,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     }
     if (foco.campo === "detalle" && entidad && linea) {
       const consulta = normalizarTexto(linea.detalle);
-      const lista = entidad.detalles
-        .filter((detalle) => !consulta || normalizarTexto(detalle.detalle).includes(consulta))
+      const lista = ordenarPorCoincidencia(entidad.detalles, (detalle) => detalle.detalle, linea.detalle)
         .filter((detalle) => normalizarTexto(detalle.detalle) !== consulta)
         .slice(0, MAXIMO_SUGERENCIAS)
         .map((detalle) => ({
@@ -669,9 +680,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     }
     if (foco.campo === "cuentaContableCodigo" && linea && !contexto.cuentasContables.has(linea.cuentaContableCodigo.trim())) {
       const consulta = linea.cuentaContableCodigo.trim();
-      const texto = normalizarTexto(consulta);
-      const lista = opcionesCuentas
-        .filter((opcion) => !consulta || opcion.codigo.startsWith(consulta) || normalizarTexto(opcion.denominacion).includes(texto))
+      const lista = (/^\d+$/.test(consulta) ? opcionesCuentas.filter((opcion) => opcion.codigo.startsWith(consulta)) : ordenarPorCoincidencia(opcionesCuentas, (opcion) => opcion.denominacion, consulta))
         .slice(0, MAXIMO_SUGERENCIAS)
         .map((opcion) => ({
           clave: opcion.codigo,
@@ -684,8 +693,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     }
     if (foco.campo === "medioPagoCodigo" && !contexto.mediosPago.has(borrador.medioPagoCodigo.trim())) {
       const consulta = borrador.medioPagoCodigo.trim();
-      const lista = medios
-        .filter((medio) => !consulta || medio.codigo.startsWith(consulta) || normalizarTexto(medio.descripcion).includes(normalizarTexto(consulta)))
+      const lista = (/^\d+$/.test(consulta) ? medios.filter((medio) => medio.codigo.startsWith(consulta)) : ordenarPorCoincidencia(medios, (medio) => medio.descripcion, consulta))
         .slice(0, 12)
         .map((medio) => ({ clave: medio.codigo, principal: medio.codigo, secundario: medio.descripcion, nota: "", aplicar: () => cambiarCabecera(borrador.id, "medioPagoCodigo", medio.codigo) }));
       return { titulo: "Medio de pago (SUNAT)", lista };
