@@ -39,7 +39,15 @@ export type CuentaTesoreriaRegistro = Prisma.CuentaTesoreriaGetPayload<{ select:
 
 export type ElementoCatalogo = { codigo: string; descripcion: string; activo: boolean };
 
-export type DatosCuentaTesoreria =Omit<Prisma.CuentaTesoreriaUncheckedCreateInput, "id" | "creadoEn" | "actualizadoEn" | "activa">;
+export type DatosCuentaTesoreria = {
+  nombre: string;
+  tipo: "BANCO" | "CAJA";
+  banco: string | null;
+  numeroCuenta: string | null;
+  moneda: "PEN" | "USD";
+  cuentaContableCodigo: string;
+  orden: number;
+};
 
 const TIEMPO_IMPORTACION_MS = 120_000;
 
@@ -81,6 +89,14 @@ export class MastersRepository {
       this.prisma.cuentaContable.count({ where }),
     ]);
     return { items, total };
+  }
+
+  cuentasDeMovimientoActivas(): Promise<{ codigo: string; denominacion: string }[]> {
+    return this.prisma.cuentaContable.findMany({
+      where: { deMovimiento: true, activa: true },
+      select: { codigo: true, denominacion: true },
+      orderBy: { codigo: "asc" },
+    });
   }
 
   buscarCuentaContable(db: Transaccion | PrismaService, codigo: string): Promise<CuentaContableRegistro | null> {
