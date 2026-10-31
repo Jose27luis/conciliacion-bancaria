@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { CuentaTesoreria, GuardarCuentaTesoreriaEntrada, UsuarioSesion } from "@conciliacion/contracts";
+import type { AperturaCuentaEntrada, CuentaTesoreria, GuardarCuentaTesoreriaEntrada, UsuarioSesion } from "@conciliacion/contracts";
 import { AuditService } from "../../audit";
 import { errores, esErrorDeUnicidad } from "../../../shared/http/api-error";
 import type { Transaccion } from "../../../shared/prisma/prisma.service";
@@ -9,8 +9,8 @@ const PREFIJO_EFECTIVO_Y_EQUIVALENTES = "10";
 const ENTIDAD = "cuenta_tesoreria";
 
 function aCuentaTesoreria(registro: CuentaTesoreriaRegistro): CuentaTesoreria {
-  const { cuentaContable, ...resto } = registro;
-  return { ...resto, cuentaContableDenominacion: cuentaContable.denominacion };
+  const { cuentaContable, saldoApertura, ...resto } = registro;
+  return { ...resto, saldoApertura: saldoApertura ? saldoApertura.toFixed(2) : null, cuentaContableDenominacion: cuentaContable.denominacion };
 }
 
 function datos(entrada: GuardarCuentaTesoreriaEntrada): DatosCuentaTesoreria {
@@ -64,6 +64,26 @@ export class TreasuryAccountsService {
         return aCuentaTesoreria(editada);
       }),
     );
+  }
+
+  cambiarApertura(id: string, entrada: AperturaCuentaEntrada, actor: UsuarioSesion): Promise<CuentaTesoreria> {
+    return this.repositorio.transaccion(async (tx) => {
+      const actual = await this.existente(tx, id);
+      const editada = await this.repositorio.actualizarCuentaTesoreria(tx, id, {
+        saldoApertura: entrada.saldo,
+        aperturaAnio: entrada.anio,
+        aperturaMes: entrada.mes,
+      });
+      await this.auditoria.registrar(tx, {
+        usuarioId: actor.id,
+        entidad: ENTIDAD,
+        entidadId: id,
+        accion: "EDITAR",
+        antes: { saldoApertura: actual.saldoApertura?.toFixed(2) ?? null, aperturaAnio: actual.aperturaAnio, aperturaMes: actual.aperturaMes },
+        despues: { saldoApertura: entrada.saldo, aperturaAnio: entrada.anio, aperturaMes: entrada.mes },
+      });
+      return aCuentaTesoreria(editada);
+    });
   }
 
   cambiarActivacion(id: string, activa: boolean, actor: UsuarioSesion): Promise<CuentaTesoreria> {
