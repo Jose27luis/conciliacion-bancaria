@@ -55,7 +55,7 @@ export function LedgerIllustration() {
           <motion.div
             key={indice}
             variants={fila}
-            className="grid grid-cols-[repeat(6,minmax(0,1fr))_1.75rem] items-center gap-2 border-b border-border/60 py-2.5"
+            className="grid grid-cols-[repeat(6,minmax(0,1fr))_1.75rem] items-center gap-2 border-b border-border/60 py-2.5 bajo:py-1.5"
           >
             {anchos.map((ancho, columna) => (
               <div key={columna} className="h-2 overflow-hidden rounded-full bg-muted">
