@@ -10,7 +10,7 @@ export default function LoginPage({ searchParams }: { searchParams: { expirada?:
   return (
     <MotionProvider>
       <LoginBackdrop />
-      <main className="relative grid min-h-screen items-center gap-12 px-4 py-10 sm:px-8 lg:grid-cols-[1.15fr_minmax(0,28rem)] lg:px-16 xl:px-24">
+      <main className="relative grid min-h-[100dvh] items-center gap-12 overflow-x-hidden px-4 py-10 sm:px-8 lg:grid-cols-[1.15fr_minmax(0,28rem)] lg:px-16 xl:px-24 bajo:py-6 apaisado:py-3">
         <div className="hidden lg:block">
           <LoginShowcase />
         </div>
