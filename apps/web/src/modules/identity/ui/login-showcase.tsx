@@ -22,10 +22,10 @@ const elemento: Variants = {
 
 export function LoginShowcase() {
   return (
-    <motion.section variants={contenedor} initial="oculto" animate="visible" className="flex max-w-xl flex-col gap-8">
+    <motion.section variants={contenedor} initial="oculto" animate="visible" className="flex max-w-xl flex-col gap-8 bajo:gap-5">
       <motion.div variants={elemento}>
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">Registro de bancos</p>
-        <h2 className="mt-3 text-4xl font-semibold leading-tight tracking-tight text-white xl:text-5xl">
+        <h2 className="mt-3 text-4xl font-semibold leading-tight tracking-tight text-white xl:text-5xl bajo:text-4xl">
           Tus movimientos bancarios,{" "}
           <span className="bg-gradient-to-r from-primary to-sistema bg-clip-text text-transparent">ordenados y conciliados.</span>
         </h2>
@@ -37,9 +37,9 @@ export function LoginShowcase() {
 
       <motion.ul variants={contenedor} className="grid gap-4 sm:grid-cols-3">
         {PUNTOS.map(({ icono: Icono, titulo, texto }) => (
-          <motion.li key={titulo} variants={elemento} whileHover={{ y: -4 }} className="rounded-xl border border-border/70 bg-card/50 p-4 backdrop-blur">
+          <motion.li key={titulo} variants={elemento} whileHover={{ y: -4 }} className="rounded-xl border border-border/70 bg-card/50 p-4 backdrop-blur bajo:p-3">
             <Icono className="size-5 text-primary" aria-hidden="true" />
-            <p className="mt-3 text-sm font-semibold text-white">{titulo}</p>
+            <p className="mt-3 text-sm font-semibold text-white bajo:mt-2">{titulo}</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{texto}</p>
           </motion.li>
         ))}
