@@ -38,7 +38,7 @@ import {
   type CampoHoja,
   type Foco,
 } from "./draft-model";
-import { DraftRows, type EstadoBorrador } from "./draft-rows";
+import { DraftRows, type CalendarioHoja, type EstadoBorrador } from "./draft-rows";
 import { PeriodPicker } from "./period-picker";
 import { RegisteredRows } from "./registered-rows";
 import { CELDA, GRILLA } from "./sheet-styles";
@@ -119,6 +119,17 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
   const consultando = useRef(new Set<string>());
 
   const ultimoRegistrado = hoja.vouchers[hoja.vouchers.length - 1];
+  const calendario = useMemo<CalendarioHoja>(() => {
+    const mes = String(periodo.mes).padStart(2, "0");
+    const ultimoDia = new Date(Date.UTC(periodo.anio, periodo.mes, 0)).getUTCDate();
+    const marcas: Record<string, number> = {};
+    for (const voucher of hoja.vouchers) {
+      if (voucher.estado === "REGISTRADO") {
+        marcas[voucher.fechaOperacion] = (marcas[voucher.fechaOperacion] ?? 0) + 1;
+      }
+    }
+    return { hoy, desde: `${periodo.anio}-${mes}-01`, hasta: `${periodo.anio}-${mes}-${ultimoDia}`, marcas };
+  }, [hoja.vouchers, hoy, periodo.anio, periodo.mes]);
   const tipoCambioInicial = enSoles ? "" : ultimoRegistrado?.tipoCambio ?? "";
 
   useEffect(() => {
@@ -890,6 +901,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
               entidadConocida={Boolean(entidades[normalizarDocumento(borrador.documento)])}
               foco={foco}
               sugerencias={sugerenciasPara(borrador)}
+              calendario={calendario}
               alCambiarCabecera={(campo, valor) => cambiarCabecera(borrador.id, campo, valor)}
               alCambiarLinea={(linea, campo, valor) => cambiarLinea(borrador.id, linea, campo, valor)}
               alNormalizarMonto={(linea, campo) => normalizarImporte(borrador.id, linea, campo)}
