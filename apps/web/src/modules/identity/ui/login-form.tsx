@@ -47,7 +47,7 @@ export function LoginForm({ sesionExpirada }: { sesionExpirada: boolean }) {
         animate={{ opacity: [0.5, 0.9, 0.5] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       />
-      <div className="relative rounded-2xl bg-card/95 p-7 shadow-2xl shadow-black/50 backdrop-blur sm:p-8">
+      <div className="relative rounded-2xl bg-card/95 p-7 shadow-2xl shadow-black/50 backdrop-blur sm:p-8 apaisado:p-5">
         <motion.div variants={elemento} className="flex items-center gap-3">
           <motion.div
             aria-hidden="true"
@@ -63,11 +63,11 @@ export function LoginForm({ sesionExpirada }: { sesionExpirada: boolean }) {
           </div>
         </motion.div>
 
-        <motion.p variants={elemento} className="mt-4 text-sm text-muted-foreground">
+        <motion.p variants={elemento} className="mt-4 text-sm text-muted-foreground apaisado:mt-2">
           {sesionExpirada ? "Tu sesión terminó. Vuelve a ingresar para continuar." : "Usa el correo y la contraseña que te dio el administrador."}
         </motion.p>
 
-        <form action={despachar} className="mt-6 grid gap-5" noValidate>
+        <form action={despachar} className="mt-6 grid gap-5 apaisado:mt-4 apaisado:gap-3" noValidate>
           <AnimatePresence initial={false}>
             {estado.estado === "error" ? (
               <motion.div
