@@ -6,6 +6,10 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      screens: {
+        bajo: { raw: "(max-height: 860px)" },
+        apaisado: { raw: "(max-height: 520px)" },
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
