@@ -1,14 +1,18 @@
 "use client";
 
-import type { KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
+import { AnimatePresence } from "framer-motion";
 import type { Problema } from "@conciliacion/contracts/rules";
-import { AlertTriangle, Check, ListPlus, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, ListPlus, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DateCalendar } from "@/shared/ui/date-calendar";
 import type { BorradorEdicion, CampoCabecera, CampoDeLinea, CampoHoja, Foco } from "./draft-model";
 import { CELDA, CELDA_SIN_RELLENO, ENTRADA, ENTRADA_NUMERO, GRILLA, MARCA_AVISO, MARCA_ERROR } from "./sheet-styles";
 import { SuggestionBar, type Sugerencia } from "./suggestion-bar";
 
 export type EstadoBorrador = "vacio" | "ok" | "aviso" | "error";
+
+export type CalendarioHoja = { hoy: string; desde: string; hasta: string; marcas: Record<string, number> };
 
 type Props = {
   borrador: BorradorEdicion;
@@ -20,6 +24,7 @@ type Props = {
   entidadConocida: boolean;
   foco: Foco | null;
   sugerencias: { titulo: string; lista: Sugerencia[] } | null;
+  calendario: CalendarioHoja;
   alCambiarCabecera: (campo: CampoCabecera, valor: string) => void;
   alCambiarLinea: (linea: number, campo: CampoDeLinea, valor: string) => void;
   alNormalizarMonto: (linea: number, campo: "ingreso" | "egreso") => void;
@@ -59,13 +64,22 @@ export function DraftRows(props: Props) {
   const visibles = enfocado ? problemas.filter((problema) => problema.nivel === "aviso") : problemas;
   const fondo = estado === "error" ? "bg-[#2a1a24]" : estado === "aviso" ? "bg-[#272414]" : estado === "vacio" ? "bg-[#0a1f36]" : "bg-[#0c2540]";
   const borde = borrador.voucherId ? "border-l-2 border-l-primary" : "";
+  const [celdaFecha, setCeldaFecha] = useState<HTMLDivElement | null>(null);
+  const [calendarioAbierto, setCalendarioAbierto] = useState(false);
 
-  const entrada = (campo: CampoHoja, linea: number, valor: string, opciones: { numero?: boolean; tipo?: string; modo?: "numeric" | "decimal" } = {}) => {
+  const cerrarCalendario = (devolverFoco: boolean): void => {
+    setCalendarioAbierto(false);
+    if (devolverFoco) {
+      celdaFecha?.querySelector("input")?.focus();
+    }
+  };
+
+  const entrada = (campo: CampoHoja, linea: number, valor: string, opciones: { numero?: boolean; tipo?: string; modo?: "numeric" | "decimal"; clase?: string } = {}) => {
     const lineaProblema = campo === "detalle" || campo === "ingreso" || campo === "egreso" || campo === "cuentaContableCodigo" ? linea : null;
     const claseMarca = marca(problemas, campo, lineaProblema, enfocado);
     return (
       <input
-        className={cn(opciones.numero ? ENTRADA_NUMERO : ENTRADA, claseMarca)}
+        className={cn(opciones.numero ? ENTRADA_NUMERO : ENTRADA, opciones.clase, claseMarca)}
         type={opciones.tipo ?? "text"}
         inputMode={opciones.modo}
         value={valor}
@@ -110,7 +124,32 @@ export function DraftRows(props: Props) {
             {codigoProvisional}
           </div>
         )}
-        <div className={CELDA_SIN_RELLENO}>{entrada("fechaOperacion", 0, borrador.fechaOperacion, { tipo: "date" })}</div>
+        <div
+          ref={setCeldaFecha}
+          className={cn(CELDA_SIN_RELLENO, "relative")}
+          onKeyDown={(evento) => {
+            if (evento.altKey && evento.key === "ArrowDown") {
+              evento.preventDefault();
+              setCalendarioAbierto(true);
+            }
+          }}
+        >
+          {entrada("fechaOperacion", 0, borrador.fechaOperacion, { tipo: "date", clase: "pr-7 [&::-webkit-calendar-picker-indicator]:hidden" })}
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setCalendarioAbierto((abierto) => !abierto)}
+            aria-label="Abrir calendario"
+            aria-expanded={calendarioAbierto}
+            title="Abrir calendario (Alt+↓)"
+            className={cn(
+              "absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md transition-colors hover:bg-primary/15 hover:text-primary",
+              calendarioAbierto ? "bg-primary/15 text-primary" : "text-muted-foreground",
+            )}
+          >
+            <CalendarDays className="size-3.5" aria-hidden="true" />
+          </button>
+        </div>
         <div className={CELDA_SIN_RELLENO}>{entrada("analitico", 0, borrador.analitico)}</div>
         <div className={CELDA_SIN_RELLENO}>{entrada("documento", 0, borrador.documento, { numero: true, modo: "numeric" })}</div>
         {entidadConocida ? (
@@ -195,6 +234,26 @@ export function DraftRows(props: Props) {
       ) : null}
 
       {enfocado && sugerencias ? <SuggestionBar titulo={sugerencias.titulo} sugerencias={sugerencias.lista} /> : null}
+
+      <AnimatePresence>
+        {calendarioAbierto && celdaFecha ? (
+          <DateCalendar
+            key="calendario"
+            ancla={celdaFecha}
+            valor={borrador.fechaOperacion}
+            hoy={props.calendario.hoy}
+            desde={props.calendario.desde}
+            hasta={props.calendario.hasta}
+            marcas={props.calendario.marcas}
+            etiquetaRango="Periodo de la hoja"
+            alElegir={(fecha) => {
+              props.alCambiarCabecera("fechaOperacion", fecha);
+              cerrarCalendario(true);
+            }}
+            alCerrar={cerrarCalendario}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
