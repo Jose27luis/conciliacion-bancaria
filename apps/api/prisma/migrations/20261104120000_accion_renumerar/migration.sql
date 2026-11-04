@@ -1,0 +1,1 @@
+ALTER TYPE "AccionAuditoria" ADD VALUE 'RENUMERAR';
