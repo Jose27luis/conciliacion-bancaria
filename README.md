@@ -667,6 +667,7 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `GET` `POST` `PUT` `PATCH` | `/treasury-accounts` · `/treasury-accounts/:id` · `/treasury-accounts/:id/activation` | Cuentas de tesorería |
 | `GET` | `/entities/search?q=` | Proveedores por documento o nombre, ordenados por uso |
 | `GET` | `/entities/document/:documento` | Proveedor con sus detalles frecuentes |
+| `GET` | `/entities/lookup/:documento` | Consulta un RUC en SUNAT o un DNI en RENIEC vía PeruDevs (valida el dígito verificador del RUC; 503 si no está configurado) |
 | `GET` | `/ledger/sheet?cuenta=&anio=&mes=` | Hoja de una cuenta en un mes y próximo correlativo |
 | `POST` | `/ledger/vouchers/warnings` | Avisos de duplicado sin guardar |
 | `POST` | `/ledger/vouchers` | Registra un lote de vouchers en una transacción |
@@ -714,6 +715,7 @@ flowchart LR
 - **Proveedores**: se crean solos al registrar. En su ficha se corrige la razón social (por ejemplo los `#N/A` del Excel) y los detalles aprendidos: se puede cambiar su texto, CTA o COD, o desactivarlos para que dejen de sugerirse. El documento no se edita.
 - **Plan contable**: además de importarlo, se crean cuentas nuevas (por ejemplo `104115` bajo `10411`). La cuenta superior y el nivel salen del código; si la superior era de movimiento pasa a agrupadora, y se rechaza si la usa una cuenta de tesorería o una plantilla activa. Si se crea una cuenta intermedia (por ejemplo `3340` cuando ya existe `33404`), las subcuentas pasan a colgar de ella. El código no se edita; la denominación, tipo, clase, moneda y marcas sí.
 - **Búsqueda**: los buscadores del plan contable, proveedores y libro filtran mientras se escribe, sin botón. Aceptan palabras sueltas en cualquier orden, sin tildes y con un error de tipeo por palabra (`mavisur` encuentra "Mavizur", `chica caja` encuentra "Caja Chica"); los resultados más parecidos salen primero. Las sugerencias de CTA, COD y detalle de la hoja usan la misma regla. En PostgreSQL usa las extensiones `unaccent`, `pg_trgm` y `fuzzystrmatch`, activadas por migración.
+- **Consulta de RUC y DNI**: en el registro rápido, si el documento no existe en el sistema se consulta SUNAT (RUC) o RENIEC (DNI) mediante PeruDevs y se llena la razón social si está vacía, con la etiqueta de la fuente. Un RUC en estado distinto de ACTIVO o con domicilio distinto de HABIDO queda como aviso en la fila. En la ficha del proveedor, el botón "Traer de SUNAT/RENIEC" propone la razón social oficial. Antes de consultar se valida el dígito verificador del RUC, y los resultados se recuerdan 12 horas para no repetir consultas.
 - **Amarre de destino**: cada cuenta de movimiento puede tener destino debe y haber (por ejemplo `6593 → 95 / 791`, `6373 → 94 / 791`). Se piden los dos o ninguno.
 - **Plantillas**: hasta 9 activas, una por tecla. Al desactivar una plantilla su tecla queda libre; al reactivarla recupera la suya si sigue libre o toma la primera disponible.
 
@@ -826,6 +828,7 @@ Con la API levantada, Swagger queda en `http://127.0.0.1:3027/api/docs` y el JSO
 | api | `PORT` · `HOST` | `3027` · `127.0.0.1` |
 | api | `APP_URL` | URL pública de la web |
 | api | `SEED_ADMIN_*` | Solo para la semilla del primer administrador |
+| api | `PERUDEVS_URL` · `PERUDEVS_TOKEN` | Opcionales. URL base y token de PeruDevs para consultar RUC y DNI; sin ellos la razón social se escribe a mano |
 | web | `API_URL` | `http://127.0.0.1:3027` |
 | web | `AUTH_SECRET` | El mismo secreto de la API, para validar la sesión en el middleware |
 | web | `APP_URL` | URL pública; si empieza con `https://` la cookie de sesión es `Secure` |
