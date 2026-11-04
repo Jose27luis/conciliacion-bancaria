@@ -55,6 +55,17 @@ export function normalizarDocumento(valor: string): string {
   return /^\d{7}$/.test(limpio) ? `0${limpio}` : limpio;
 }
 
+const PESOS_RUC = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+
+export function rucConDigitoValido(ruc: string): boolean {
+  if (!/^(10|15|16|17|20)\d{9}$/.test(ruc)) {
+    return false;
+  }
+  const suma = PESOS_RUC.reduce((total, peso, indice) => total + peso * Number(ruc[indice]), 0);
+  const digito = (11 - (suma % 11)) % 10;
+  return digito === Number(ruc[10]);
+}
+
 export function tipoDeDocumento(numero: string): TipoDocumentoEntidad {
   if (/^\d{11}$/.test(numero)) {
     return "RUC";
