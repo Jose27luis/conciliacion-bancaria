@@ -102,7 +102,7 @@ export class LedgerController {
   @ApiOperation({
     summary: "Reordenar la hoja",
     description:
-      "Recibe todos los vouchers de la cuenta y el mes en el orden nuevo y les reparte sus mismos números de menor a mayor en ese orden. No toca los números de otras cuentas. Los anulados no cambian de número. Solo en meses abiertos; cada cambio queda en auditoría.",
+      "Recibe los vouchers vigentes de la cuenta y el mes en el orden nuevo y les reparte sus mismos números de menor a mayor en ese orden. No toca los números de otras cuentas ni de los anulados. Solo en meses abiertos; cada cambio queda en auditoría.",
   })
   @ZodResponse({ status: 200, description: "Hoja con la numeración nueva", type: HojaDto })
   ordenar(@Body() entrada: OrdenHojaDto, @UsuarioActual() actor: UsuarioSesion): Promise<Hoja> {
