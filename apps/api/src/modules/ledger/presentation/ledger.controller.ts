@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, StreamableFile } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiParam, ApiProduces, ApiTags } from "@nestjs/swagger";
-import { ROLES_REGISTRAN, type AvisosLote, type Hoja, type Libro, type LoteRegistrado, type UsuarioSesion, type Voucher } from "@conciliacion/contracts";
+import { ROLES_ORDENAN_HOJA, ROLES_REGISTRAN, type AvisosLote, type Hoja, type Libro, type LoteRegistrado, type UsuarioSesion, type Voucher } from "@conciliacion/contracts";
 import { ZodResponse } from "nestjs-zod";
 import { Roles, UsuarioActual } from "../../identity";
 import { ApiProtegida } from "../../../shared/http/api-docs";
@@ -16,6 +16,7 @@ import {
   LibroQueryDto,
   LoteRegistradoDto,
   LoteVouchersDto,
+  OrdenHojaDto,
   VoucherDto,
   VoucherEntradaDto,
 } from "./ledger.dto";
@@ -93,6 +94,19 @@ export class LedgerController {
   @ZodResponse({ status: 201, description: "Vouchers registrados", type: LoteRegistradoDto })
   registrar(@Body() lote: LoteVouchersDto, @UsuarioActual() actor: UsuarioSesion): Promise<LoteRegistrado> {
     return this.libro.registrar(lote, actor);
+  }
+
+  @Put("sheet/order")
+  @Roles(...ROLES_ORDENAN_HOJA)
+  @ApiProtegida("validacion", "noEncontrado", "conflicto")
+  @ApiOperation({
+    summary: "Reordenar la hoja",
+    description:
+      "Recibe todos los vouchers de la cuenta y el mes en el orden nuevo y les reparte sus mismos números de menor a mayor en ese orden. No toca los números de otras cuentas. Los anulados no cambian de número. Solo en meses abiertos; cada cambio queda en auditoría.",
+  })
+  @ZodResponse({ status: 200, description: "Hoja con la numeración nueva", type: HojaDto })
+  ordenar(@Body() entrada: OrdenHojaDto, @UsuarioActual() actor: UsuarioSesion): Promise<Hoja> {
+    return this.libro.ordenar(entrada, actor);
   }
 
   @Put("vouchers/:id")
