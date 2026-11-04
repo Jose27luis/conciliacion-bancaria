@@ -631,6 +631,7 @@ flowchart LR
 | `Alt+L` | Agregar línea al mismo voucher (pago agrupado) | Implementado |
 | `Alt+D` | Duplicar la fila anterior | Implementado |
 | Manito en la columna # o `Alt+Shift+↑` `↓` | Mover una fila en edición arriba o abajo; los vouchers se numeran en ese orden al registrar | Implementado |
+| Manito en vouchers registrados | Mover un voucher ya registrado (administrador o contador, mes abierto); la hoja reparte sus mismos números de menor a mayor en el nuevo orden, sin tocar otras cuentas. Los anulados no se mueven. Cada cambio queda en auditoría como RENUMERAR | Implementado |
 | `Alt+N` | Fila nueva | Implementado |
 | `Ctrl+Enter` | Registrar todas las filas listas | Implementado |
 | `Alt+1…9` | Insertar una plantilla: crea la fila llena y deja el cursor donde falta el dato (analítico o importe) | Implementado |
@@ -671,6 +672,7 @@ Prefijo `/api`. Autenticación con JWT en cookie `httpOnly`. La documentación i
 | `GET` | `/entities/lookup/:documento` | Consulta un RUC en SUNAT o un DNI en RENIEC vía PeruDevs (valida el dígito verificador del RUC; 503 si no está configurado) |
 | `GET` | `/ledger/sheet?cuenta=&anio=&mes=` | Hoja de una cuenta en un mes y próximo correlativo |
 | `POST` | `/ledger/vouchers/warnings` | Avisos de duplicado sin guardar |
+| `PUT` | `/ledger/sheet/order` | Reordena los vouchers de una cuenta y mes; los renumera con sus mismos números |
 | `POST` | `/ledger/vouchers` | Registra un lote de vouchers en una transacción |
 | `GET` | `/ledger/vouchers?anio=&mes=&cuenta=&estado=&q=` | Libro de movimientos paginado con totales por moneda |
 | `GET` | `/ledger/vouchers/:id` | Un voucher con sus líneas vigentes |
