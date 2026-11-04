@@ -20,7 +20,7 @@ import {
   validarVoucher,
   type Problema,
 } from "@conciliacion/contracts/rules";
-import { Loader2, Plus, Copy } from "lucide-react";
+import { Copy, Eye, EyeOff, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -120,6 +120,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
   const [erroresServidor, setErroresServidor] = useState<Record<string, string[]>>({});
   const [registrando, setRegistrando] = useState(false);
   const [focoPendiente, setFocoPendiente] = useState<Foco | null>(null);
+  const [mostrarAnulados, setMostrarAnulados] = useState(false);
   const consultando = useRef(new Set<string>());
 
   const ultimoRegistrado = hoja.vouchers[hoja.vouchers.length - 1];
@@ -234,9 +235,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
       ? "El mes está cerrado: no se pueden mover sus vouchers."
       : !ROLES_ORDENAN_HOJA.includes(usuario.rol)
         ? "Solo el administrador o el contador pueden mover vouchers registrados."
-        : enEdicion.size > 0
-          ? "Termina o descarta la edición en curso para mover vouchers registrados."
-          : null;
+        : null;
   const ordenable = puedeRegistrar && motivoNoOrdenable === null;
 
   const ordenarRegistrados = async (ids: string[]): Promise<boolean> => {
@@ -797,7 +796,10 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     return null;
   };
 
-  const lineasRegistradas = hoja.vouchers.filter((voucher) => !enEdicion.has(voucher.id)).reduce((total, voucher) => total + voucher.lineas.length, 0);
+  const cantidadAnulados = hoja.vouchers.filter((voucher) => voucher.estado === "ANULADO").length;
+  const lineasRegistradas = hoja.vouchers
+    .filter((voucher) => !enEdicion.has(voucher.id) && (voucher.estado === "REGISTRADO" || mostrarAnulados))
+    .reduce((total, voucher) => total + voucher.lineas.length, 0);
   const totalesRegistrados = hoja.vouchers
     .filter((voucher) => voucher.estado === "REGISTRADO")
     .flatMap((voucher) => voucher.lineas)
@@ -926,6 +928,20 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">Las columnas son las mismas de tu Excel. Celeste = lo llena el sistema.</p>
           </div>
+          {cantidadAnulados > 0 ? (
+            <button
+              type="button"
+              onClick={() => setMostrarAnulados((actual) => !actual)}
+              aria-pressed={mostrarAnulados}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
+                mostrarAnulados ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-border text-muted-foreground hover:border-input hover:text-white",
+              )}
+            >
+              {mostrarAnulados ? <EyeOff className="size-3.5" aria-hidden="true" /> : <Eye className="size-3.5" aria-hidden="true" />}
+              {mostrarAnulados ? "Ocultar anulados" : "Ver anulados"} ({cantidadAnulados})
+            </button>
+          ) : null}
           {puedeRegistrar ? (
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
               <span>
@@ -969,6 +985,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
             vouchers={hoja.vouchers}
             enEdicion={enEdicion}
             editables={editables}
+            mostrarAnulados={mostrarAnulados}
             ordenable={ordenable}
             motivoNoOrdenable={motivoNoOrdenable}
             alEditar={iniciarEdicion}
@@ -1013,7 +1030,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
           <div className={cn(GRILLA, "border-t border-input bg-[#0e2944]")}>
             <div className={CELDA} />
             <div className={cn(CELDA, "col-span-8 font-semibold text-muted-foreground")}>
-              Registrado en {cuenta.nombre} · {MESES[periodo.mes - 1]} {periodo.anio} · {hoja.vouchers.length} vouchers
+              Registrado en {cuenta.nombre} · {MESES[periodo.mes - 1]} {periodo.anio} · {hoja.vouchers.length - cantidadAnulados} vouchers
             </div>
             <div className={cn(CELDA, "justify-end font-bold tabular-nums text-exito")}>{dinero(totalesRegistrados.ingreso)}</div>
             <div className={cn(CELDA, "justify-end font-bold tabular-nums text-destructive")}>{dinero(totalesRegistrados.egreso)}</div>
