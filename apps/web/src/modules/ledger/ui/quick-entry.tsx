@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Reorder } from "framer-motion";
 import type { Entidad, EntidadConHistorial, Hoja, OpcionCuentaContable, Voucher } from "@conciliacion/contracts";
 import { MESES, puedeModificarVoucher, type Rol } from "@conciliacion/contracts/enums";
 import {
@@ -40,6 +41,7 @@ import {
   type Foco,
 } from "./draft-model";
 import { DraftRows, type CalendarioHoja, type ConsultaExterna, type EstadoBorrador } from "./draft-rows";
+import { SortableRow } from "./sortable-row";
 import { PeriodPicker } from "./period-picker";
 import { RegisteredRows } from "./registered-rows";
 import { CELDA, GRILLA } from "./sheet-styles";
@@ -672,8 +674,26 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     return () => window.removeEventListener("keydown", escuchar);
   }, []);
 
+  const moverBorrador = (id: string, pasos: -1 | 1, campo: CampoHoja, linea: number): void => {
+    setBorradores((actuales) => {
+      const desde = actuales.findIndex((borrador) => borrador.id === id);
+      const hasta = desde + pasos;
+      const movido = actuales[desde];
+      if (desde < 0 || hasta < 0 || hasta >= actuales.length || !movido) {
+        return actuales;
+      }
+      const siguiente = actuales.filter((borrador) => borrador.id !== id);
+      siguiente.splice(hasta, 0, movido);
+      return siguiente;
+    });
+    setFocoPendiente({ borradorId: id, campo, linea });
+  };
+
   const teclearCampo = (borrador: BorradorEdicion, evento: KeyboardEvent<HTMLInputElement>, campo: CampoHoja, linea: number) => {
-    if (evento.key === "Enter" && !evento.ctrlKey && campo === "medioPagoCodigo") {
+    if (evento.altKey && evento.shiftKey && (evento.key === "ArrowUp" || evento.key === "ArrowDown")) {
+      evento.preventDefault();
+      moverBorrador(borrador.id, evento.key === "ArrowUp" ? -1 : 1, campo, linea);
+    } else if (evento.key === "Enter" && !evento.ctrlKey && campo === "medioPagoCodigo") {
       evento.preventDefault();
       agregarBorrador(borrador.id);
     } else if (evento.key === "F4") {
@@ -921,30 +941,36 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
 
           <RegisteredRows vouchers={hoja.vouchers} enEdicion={enEdicion} editables={editables} alEditar={iniciarEdicion} />
 
-          {filas.map(({ borrador, codigo, filaInicial }) => (
-            <DraftRows
-              key={borrador.id}
-              borrador={borrador}
-              filaInicial={filaInicial}
-              codigoProvisional={codigo}
-              enSoles={enSoles}
-              problemas={problemas[borrador.id] ?? []}
-              estado={estadoDe(borrador.id)}
-              entidadConocida={Boolean(entidades[normalizarDocumento(borrador.documento)])}
-              foco={foco}
-              sugerencias={sugerenciasPara(borrador)}
-              calendario={calendario}
-              consultaExterna={externas[normalizarDocumento(borrador.documento)] ?? null}
-              alCambiarCabecera={(campo, valor) => cambiarCabecera(borrador.id, campo, valor)}
-              alCambiarLinea={(linea, campo, valor) => cambiarLinea(borrador.id, linea, campo, valor)}
-              alNormalizarMonto={(linea, campo) => normalizarImporte(borrador.id, linea, campo)}
-              alEnfocar={(campo, linea) => setFoco({ borradorId: borrador.id, campo, linea })}
-              alTeclear={(evento, campo, linea) => teclearCampo(borrador, evento, campo, linea)}
-              alAgregarLinea={() => agregarLinea(borrador.id)}
-              alQuitarLinea={(linea) => quitarLinea(borrador.id, linea)}
-              alQuitar={() => quitarBorrador(borrador.id)}
-            />
-          ))}
+          <Reorder.Group as="div" axis="y" values={borradores} onReorder={setBorradores}>
+            {filas.map(({ borrador, codigo, filaInicial }) => (
+              <SortableRow key={borrador.id} borrador={borrador}>
+                {(arrastre) => (
+                  <DraftRows
+                    arrastre={arrastre}
+                    borrador={borrador}
+                    filaInicial={filaInicial}
+                    codigoProvisional={codigo}
+                    enSoles={enSoles}
+                    problemas={problemas[borrador.id] ?? []}
+                    estado={estadoDe(borrador.id)}
+                    entidadConocida={Boolean(entidades[normalizarDocumento(borrador.documento)])}
+                    foco={foco}
+                    sugerencias={sugerenciasPara(borrador)}
+                    calendario={calendario}
+                    consultaExterna={externas[normalizarDocumento(borrador.documento)] ?? null}
+                    alCambiarCabecera={(campo, valor) => cambiarCabecera(borrador.id, campo, valor)}
+                    alCambiarLinea={(linea, campo, valor) => cambiarLinea(borrador.id, linea, campo, valor)}
+                    alNormalizarMonto={(linea, campo) => normalizarImporte(borrador.id, linea, campo)}
+                    alEnfocar={(campo, linea) => setFoco({ borradorId: borrador.id, campo, linea })}
+                    alTeclear={(evento, campo, linea) => teclearCampo(borrador, evento, campo, linea)}
+                    alAgregarLinea={() => agregarLinea(borrador.id)}
+                    alQuitarLinea={(linea) => quitarLinea(borrador.id, linea)}
+                    alQuitar={() => quitarBorrador(borrador.id)}
+                  />
+                )}
+              </SortableRow>
+            ))}
+          </Reorder.Group>
 
           {hoja.vouchers.length === 0 && borradores.length === 0 ? (
             <p className="min-w-[1420px] px-4 py-6 text-sm text-muted-foreground">No hay movimientos registrados en este mes.</p>
