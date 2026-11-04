@@ -12,6 +12,7 @@ const ATAJOS: [string, string][] = [
   ["Alt+L", "Agregar línea al mismo voucher"],
   ["Alt+D", "Duplicar la fila anterior"],
   ["Alt+N", "Fila nueva"],
+  ["Alt+Shift+↑↓", "Mover la fila arriba o abajo"],
   ["Ctrl+Enter", "Registrar todas las filas listas"],
 ];
 
