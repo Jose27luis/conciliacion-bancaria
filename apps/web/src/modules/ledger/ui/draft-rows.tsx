@@ -3,12 +3,13 @@
 import { useState, type KeyboardEvent } from "react";
 import { AnimatePresence } from "framer-motion";
 import type { Problema } from "@conciliacion/contracts/rules";
-import { AlertTriangle, CalendarDays, Check, Info, ListPlus, Loader2, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Hand, HandGrab, Info, ListPlus, Loader2, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DateCalendar } from "@/shared/ui/date-calendar";
 import type { ResultadoConsultaDocumento } from "../actions";
 import type { BorradorEdicion, CampoCabecera, CampoDeLinea, CampoHoja, Foco } from "./draft-model";
 import { CELDA, CELDA_SIN_RELLENO, ENTRADA, ENTRADA_NUMERO, GRILLA, MARCA_AVISO, MARCA_ERROR } from "./sheet-styles";
+import type { ArrastreFila } from "./sortable-row";
 import { SuggestionBar, type Sugerencia } from "./suggestion-bar";
 
 export type EstadoBorrador = "vacio" | "ok" | "aviso" | "error";
@@ -29,6 +30,7 @@ type Props = {
   sugerencias: { titulo: string; lista: Sugerencia[] } | null;
   calendario: CalendarioHoja;
   consultaExterna: ConsultaExterna | null;
+  arrastre: ArrastreFila;
   alCambiarCabecera: (campo: CampoCabecera, valor: string) => void;
   alCambiarLinea: (linea: number, campo: CampoDeLinea, valor: string) => void;
   alNormalizarMonto: (linea: number, campo: "ingreso" | "egreso") => void;
@@ -116,7 +118,28 @@ export function DraftRows(props: Props) {
   return (
     <div className={cn("border-b border-border/70", fondo, borde)}>
       <div className={GRILLA}>
-        <div className={cn(CELDA, "justify-center text-[11px] text-muted-foreground")}>{filaInicial}</div>
+        <button
+          type="button"
+          tabIndex={-1}
+          onPointerDown={(evento) => {
+            evento.preventDefault();
+            props.arrastre.iniciar(evento);
+          }}
+          aria-label={`Mover la fila ${filaInicial}`}
+          title="Arrastra para mover la fila (Alt+Shift+↑ o ↓)"
+          className={cn(
+            CELDA,
+            "group/mano relative touch-none select-none justify-center text-[11px] text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary",
+            props.arrastre.arrastrando ? "cursor-grabbing bg-primary/15 text-primary" : "cursor-grab",
+          )}
+        >
+          <span className={cn("transition-opacity", props.arrastre.arrastrando ? "opacity-0" : "group-hover/mano:opacity-0")}>{filaInicial}</span>
+          {props.arrastre.arrastrando ? (
+            <HandGrab className="absolute size-4" aria-hidden="true" />
+          ) : (
+            <Hand className="absolute size-4 -rotate-12 opacity-0 transition-all group-hover/mano:rotate-0 group-hover/mano:opacity-100" aria-hidden="true" />
+          )}
+        </button>
         <div className={CELDA_SIN_RELLENO}>{entrada("nroOperacion", 0, borrador.nroOperacion)}</div>
         {borrador.voucherId ? (
           <div className={cn(CELDA, "gap-1 font-semibold tabular-nums text-primary")} title="Editando un voucher registrado; conserva su número">
@@ -132,7 +155,7 @@ export function DraftRows(props: Props) {
           ref={setCeldaFecha}
           className={cn(CELDA_SIN_RELLENO, "relative")}
           onKeyDown={(evento) => {
-            if (evento.altKey && evento.key === "ArrowDown") {
+            if (evento.altKey && !evento.shiftKey && evento.key === "ArrowDown") {
               evento.preventDefault();
               setCalendarioAbierto(true);
             }
