@@ -3,6 +3,7 @@
 import {
   anularVoucherSchema,
   avisosLoteSchema,
+  consultaDocumentoSchema,
   entidadConHistorialSchema,
   entidadSchema,
   loteRegistradoSchema,
@@ -11,6 +12,7 @@ import {
   voucherEntradaSchema,
   voucherSchema,
   type AvisoLote,
+  type ConsultaDocumento,
   type Entidad,
   type EntidadConHistorial,
   type LoteVouchersEntrada,
@@ -20,6 +22,8 @@ import { revalidatePath } from "next/cache";
 import { api, ErrorDeApi } from "@/shared/api/server-client";
 import { falloDeZod, texto, type EstadoFormulario } from "@/shared/lib/form-state";
 import { ejecutarAccion } from "@/shared/lib/run-action";
+
+export type ResultadoConsultaDocumento = { estado: "encontrado"; consulta: ConsultaDocumento } | { estado: "sinDatos"; mensaje: string };
 
 export type ResultadoRegistro =
   | { estado: "ok"; codigos: string[] }
@@ -45,6 +49,21 @@ export async function entidadPorDocumento(documento: string): Promise<EntidadCon
       return null;
     }
     throw error;
+  }
+}
+
+export async function consultarDocumento(documento: string): Promise<ResultadoConsultaDocumento> {
+  const limpio = documento.replace(/[\s.-]/g, "");
+  if (!/^\d{8}$|^\d{11}$/.test(limpio)) {
+    return { estado: "sinDatos", mensaje: "Solo se consultan RUC de 11 dígitos o DNI de 8." };
+  }
+  try {
+    return { estado: "encontrado", consulta: await api(`/entities/lookup/${limpio}`, consultaDocumentoSchema) };
+  } catch (error: unknown) {
+    if (error instanceof ErrorDeApi && (error.estado < 500 || error.estado === 503)) {
+      return { estado: "sinDatos", mensaje: error.cuerpo.mensaje };
+    }
+    return { estado: "sinDatos", mensaje: "No se pudo consultar el documento. Escribe la razón social a mano." };
   }
 }
 
