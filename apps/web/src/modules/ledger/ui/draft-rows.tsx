@@ -3,14 +3,17 @@
 import { useState, type KeyboardEvent } from "react";
 import { AnimatePresence } from "framer-motion";
 import type { Problema } from "@conciliacion/contracts/rules";
-import { AlertTriangle, CalendarDays, Check, ListPlus, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Info, ListPlus, Loader2, Minus, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DateCalendar } from "@/shared/ui/date-calendar";
+import type { ResultadoConsultaDocumento } from "../actions";
 import type { BorradorEdicion, CampoCabecera, CampoDeLinea, CampoHoja, Foco } from "./draft-model";
 import { CELDA, CELDA_SIN_RELLENO, ENTRADA, ENTRADA_NUMERO, GRILLA, MARCA_AVISO, MARCA_ERROR } from "./sheet-styles";
 import { SuggestionBar, type Sugerencia } from "./suggestion-bar";
 
 export type EstadoBorrador = "vacio" | "ok" | "aviso" | "error";
+
+export type ConsultaExterna = ResultadoConsultaDocumento | { estado: "consultando" };
 
 export type CalendarioHoja = { hoy: string; desde: string; hasta: string; marcas: Record<string, number> };
 
@@ -25,6 +28,7 @@ type Props = {
   foco: Foco | null;
   sugerencias: { titulo: string; lista: Sugerencia[] } | null;
   calendario: CalendarioHoja;
+  consultaExterna: ConsultaExterna | null;
   alCambiarCabecera: (campo: CampoCabecera, valor: string) => void;
   alCambiarLinea: (linea: number, campo: CampoDeLinea, valor: string) => void;
   alNormalizarMonto: (linea: number, campo: "ingreso" | "egreso") => void;
@@ -157,7 +161,26 @@ export function DraftRows(props: Props) {
             {borrador.razonSocial}
           </div>
         ) : (
-          <div className={CELDA_SIN_RELLENO}>{entrada("razonSocial", 0, borrador.razonSocial)}</div>
+          <div className={cn(CELDA_SIN_RELLENO, "relative")}>
+            {entrada("razonSocial", 0, borrador.razonSocial, { clase: props.consultaExterna ? "pr-16" : undefined })}
+            {props.consultaExterna?.estado === "consultando" ? (
+              <span className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1 text-[10px] font-semibold text-muted-foreground" role="status">
+                <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                {borrador.documento.replace(/\D/g, "").length === 11 ? "SUNAT" : "RENIEC"}
+              </span>
+            ) : props.consultaExterna?.estado === "encontrado" ? (
+              <span
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded border border-sistema/50 bg-sistema/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-sistema"
+                title={[`Datos de ${props.consultaExterna.consulta.fuente}`, props.consultaExterna.consulta.estado, props.consultaExterna.consulta.condicion, props.consultaExterna.consulta.direccion].filter(Boolean).join(" · ")}
+              >
+                {props.consultaExterna.consulta.fuente}
+              </span>
+            ) : props.consultaExterna?.estado === "sinDatos" ? (
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground" title={props.consultaExterna.mensaje}>
+                <Info className="size-3.5" aria-label={props.consultaExterna.mensaje} />
+              </span>
+            ) : null}
+          </div>
         )}
         <div className={CELDA_SIN_RELLENO}>{entrada("detalle", 0, primera.detalle)}</div>
         {enSoles ? (
