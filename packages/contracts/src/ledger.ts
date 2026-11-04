@@ -62,6 +62,19 @@ export const entidadSchema = z.object({
 });
 export type Entidad = z.infer<typeof entidadSchema>;
 
+export const FUENTES_CONSULTA_DOCUMENTO = ["SUNAT", "RENIEC"] as const;
+
+export const consultaDocumentoSchema = z.object({
+  tipoDocumento: z.enum(["RUC", "DNI"]).describe("Tipo de documento consultado"),
+  numeroDocumento: z.string().describe("RUC de 11 dígitos o DNI de 8"),
+  razonSocial: z.string().describe("Razón social del RUC o nombre completo del DNI"),
+  estado: z.string().nullable().describe("Estado del contribuyente en SUNAT, por ejemplo ACTIVO o BAJA DE OFICIO"),
+  condicion: z.string().nullable().describe("Condición del domicilio en SUNAT, por ejemplo HABIDO o NO HABIDO"),
+  direccion: z.string().nullable().describe("Domicilio fiscal"),
+  fuente: z.enum(FUENTES_CONSULTA_DOCUMENTO).describe("SUNAT para RUC, RENIEC para DNI"),
+});
+export type ConsultaDocumento = z.infer<typeof consultaDocumentoSchema>;
+
 export const voucherSchema = z.object({
   id: z.uuid(),
   codigo: z.string().describe("MM-NNNNN"),
