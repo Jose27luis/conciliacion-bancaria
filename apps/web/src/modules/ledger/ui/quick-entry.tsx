@@ -14,6 +14,7 @@ import {
   normalizarTexto,
   puntajeCoincidencia,
   SIN_COMPROBANTE,
+  tipoDeDocumento,
   tieneErrores,
   validarVoucher,
   type Problema,
@@ -22,7 +23,7 @@ import { Loader2, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { avisosDeLote, buscarEntidades, editarVoucher, entidadPorDocumento, registrarLote } from "../actions";
+import { avisosDeLote, buscarEntidades, consultarDocumento, editarVoucher, entidadPorDocumento, registrarLote } from "../actions";
 import {
   aEntrada,
   borradorDesdeVoucher,
@@ -38,7 +39,7 @@ import {
   type CampoHoja,
   type Foco,
 } from "./draft-model";
-import { DraftRows, type CalendarioHoja, type EstadoBorrador } from "./draft-rows";
+import { DraftRows, type CalendarioHoja, type ConsultaExterna, type EstadoBorrador } from "./draft-rows";
 import { PeriodPicker } from "./period-picker";
 import { RegisteredRows } from "./registered-rows";
 import { CELDA, GRILLA } from "./sheet-styles";
@@ -110,6 +111,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
   const [almacenDisponible, setAlmacenDisponible] = useState(true);
   const [foco, setFoco] = useState<Foco | null>(null);
   const [entidades, setEntidades] = useState<Record<string, EntidadConHistorial | null>>({});
+  const [externas, setExternas] = useState<Record<string, ConsultaExterna>>({});
   const [busqueda, setBusqueda] = useState<{ consulta: string; resultados: Entidad[] }>({ consulta: "", resultados: [] });
   const [avisosServidor, setAvisosServidor] = useState<Record<string, string[]>>({});
   const [verificacionFallida, setVerificacionFallida] = useState(false);
@@ -185,10 +187,20 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
       for (const mensaje of erroresServidor[borrador.id] ?? []) {
         propios.push({ nivel: "error", campo: "documento", linea: null, mensaje });
       }
+      const externa = externas[documento];
+      if (externa?.estado === "encontrado" && externa.consulta.tipoDocumento === "RUC") {
+        const { estado, condicion } = externa.consulta;
+        if (estado && estado !== "ACTIVO") {
+          propios.push({ nivel: "aviso", campo: "documento", linea: null, mensaje: `SUNAT: el RUC figura como ${estado}.` });
+        }
+        if (condicion && condicion !== "HABIDO") {
+          propios.push({ nivel: "aviso", campo: "documento", linea: null, mensaje: `SUNAT: el domicilio figura como ${condicion}.` });
+        }
+      }
       resultado[borrador.id] = propios;
     }
     return resultado;
-  }, [borradores, contexto, cuenta.moneda, entidades, periodo.anio, periodo.mes, avisosServidor, erroresServidor]);
+  }, [borradores, contexto, cuenta.moneda, entidades, externas, periodo.anio, periodo.mes, avisosServidor, erroresServidor]);
 
   const vacios = useMemo(() => new Set(borradores.filter(estaVacio).map((borrador) => borrador.id)), [borradores]);
 
@@ -253,6 +265,24 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
     router.replace(`/quick-entry?cuenta=${cuenta.id}&anio=${periodo.anio}&mes=${periodo.mes}`, { scroll: false });
   }, [cargado, editarId, editables, hoja.vouchers, iniciarEdicion, router, cuenta.id, periodo.anio, periodo.mes]);
 
+  const consultarExterno = useCallback((documento: string): void => {
+    setExternas((previas) => ({ ...previas, [documento]: { estado: "consultando" } }));
+    consultarDocumento(documento)
+      .then((resultado) => {
+        setExternas((previas) => ({ ...previas, [documento]: resultado }));
+        if (resultado.estado === "encontrado") {
+          setBorradores((actuales) =>
+            actuales.map((borrador) =>
+              normalizarDocumento(borrador.documento) === documento && !borrador.razonSocial.trim() ? { ...borrador, razonSocial: resultado.consulta.razonSocial } : borrador,
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        setExternas((previas) => ({ ...previas, [documento]: { estado: "sinDatos", mensaje: "No se pudo consultar el documento. Escribe la razón social a mano." } }));
+      });
+  }, []);
+
   const documentosPendientes = useMemo(
     () => [...new Set(borradores.map((borrador) => normalizarDocumento(borrador.documento)).filter((documento) => documento.length >= 8))],
     [borradores],
@@ -286,6 +316,8 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
                   };
                 }),
               );
+            } else if (tipoDeDocumento(documento) !== "EXTRANJERO") {
+              consultarExterno(documento);
             }
           })
           .catch(() => {
@@ -297,7 +329,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
       }
     }, 300);
     return () => window.clearTimeout(temporizador);
-  }, [documentosPendientes, entidades]);
+  }, [consultarExterno, documentosPendientes, entidades]);
 
   const borradorEnfocado = foco ? borradores.find((borrador) => borrador.id === foco.borradorId) : undefined;
   const consultaBusqueda =
@@ -902,6 +934,7 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
               foco={foco}
               sugerencias={sugerenciasPara(borrador)}
               calendario={calendario}
+              consultaExterna={externas[normalizarDocumento(borrador.documento)] ?? null}
               alCambiarCabecera={(campo, valor) => cambiarCabecera(borrador.id, campo, valor)}
               alCambiarLinea={(linea, campo, valor) => cambiarLinea(borrador.id, linea, campo, valor)}
               alNormalizarMonto={(linea, campo) => normalizarImporte(borrador.id, linea, campo)}
