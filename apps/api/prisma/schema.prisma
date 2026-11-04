@@ -54,6 +54,7 @@ enum AccionAuditoria {
   ANULAR
   CERRAR
   REABRIR
+  RENUMERAR
 }
 
 enum EstadoPeriodo {
