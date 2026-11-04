@@ -630,6 +630,7 @@ flowchart LR
 | `F4` | Copiar el valor de la celda de arriba | Implementado |
 | `Alt+L` | Agregar línea al mismo voucher (pago agrupado) | Implementado |
 | `Alt+D` | Duplicar la fila anterior | Implementado |
+| Manito en la columna # o `Alt+Shift+↑` `↓` | Mover una fila en edición arriba o abajo; los vouchers se numeran en ese orden al registrar | Implementado |
 | `Alt+N` | Fila nueva | Implementado |
 | `Ctrl+Enter` | Registrar todas las filas listas | Implementado |
 | `Alt+1…9` | Insertar una plantilla: crea la fila llena y deja el cursor donde falta el dato (analítico o importe) | Implementado |
