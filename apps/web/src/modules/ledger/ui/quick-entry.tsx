@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Reorder } from "framer-motion";
 import type { Entidad, EntidadConHistorial, Hoja, OpcionCuentaContable, Voucher } from "@conciliacion/contracts";
-import { MESES, puedeModificarVoucher, type Rol } from "@conciliacion/contracts/enums";
+import { MESES, puedeModificarVoucher, ROLES_ORDENAN_HOJA, type Rol } from "@conciliacion/contracts/enums";
 import {
   centavosATexto,
   formatoVoucher,
@@ -24,7 +24,7 @@ import { Loader2, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { avisosDeLote, buscarEntidades, consultarDocumento, editarVoucher, entidadPorDocumento, registrarLote } from "../actions";
+import { avisosDeLote, buscarEntidades, consultarDocumento, editarVoucher, entidadPorDocumento, ordenarHoja, registrarLote } from "../actions";
 import {
   aEntrada,
   borradorDesdeVoucher,
@@ -228,6 +228,32 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
   );
 
   const enEdicion = useMemo(() => new Set(borradores.flatMap((borrador) => (borrador.voucherId ? [borrador.voucherId] : []))), [borradores]);
+  const motivoNoOrdenable = !puedeRegistrar
+    ? null
+    : periodo.estado === "CERRADO"
+      ? "El mes está cerrado: no se pueden mover sus vouchers."
+      : !ROLES_ORDENAN_HOJA.includes(usuario.rol)
+        ? "Solo el administrador o el contador pueden mover vouchers registrados."
+        : enEdicion.size > 0
+          ? "Termina o descarta la edición en curso para mover vouchers registrados."
+          : null;
+  const ordenable = puedeRegistrar && motivoNoOrdenable === null;
+
+  const ordenarRegistrados = async (ids: string[]): Promise<boolean> => {
+    try {
+      const resultado = await ordenarHoja({ cuentaTesoreriaId: cuenta.id, anio: periodo.anio, mes: periodo.mes, voucherIds: ids });
+      if (resultado.estado === "error") {
+        toast.error(resultado.mensaje);
+        return false;
+      }
+      toast.success("Orden guardado: los números de voucher se reordenaron.");
+      router.refresh();
+      return true;
+    } catch {
+      toast.error("No se pudo guardar el orden. Revisa tu conexión e inténtalo de nuevo.");
+      return false;
+    }
+  };
 
   const iniciarEdicion = useCallback(
     (voucher: Voucher) => {
@@ -939,11 +965,19 @@ export function QuickEntry({ hoja, cuentas, opcionesCuentas, medios, tipos, hoy,
             ))}
           </div>
 
-          <RegisteredRows vouchers={hoja.vouchers} enEdicion={enEdicion} editables={editables} alEditar={iniciarEdicion} />
+          <RegisteredRows
+            vouchers={hoja.vouchers}
+            enEdicion={enEdicion}
+            editables={editables}
+            ordenable={ordenable}
+            motivoNoOrdenable={motivoNoOrdenable}
+            alEditar={iniciarEdicion}
+            alOrdenar={ordenarRegistrados}
+          />
 
           <Reorder.Group as="div" axis="y" values={borradores} onReorder={setBorradores}>
             {filas.map(({ borrador, codigo, filaInicial }) => (
-              <SortableRow key={borrador.id} borrador={borrador}>
+              <SortableRow key={borrador.id} valor={borrador}>
                 {(arrastre) => (
                   <DraftRows
                     arrastre={arrastre}
