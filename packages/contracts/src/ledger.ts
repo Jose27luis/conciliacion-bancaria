@@ -156,7 +156,7 @@ export const ordenHojaSchema = z.object({
   cuentaTesoreriaId: z.uuid().describe("Cuenta de tesorería (pestaña) que se reordena"),
   anio: z.number().int().min(2000).max(2100).describe("Año del periodo"),
   mes: z.number().int().min(1).max(12).describe("Mes del periodo"),
-  voucherIds: z.array(z.uuid()).min(1).max(5000).describe("Todos los vouchers de la hoja en el orden nuevo; los números se reparten de menor a mayor en ese orden"),
+  voucherIds: z.array(z.uuid()).min(1).max(5000).describe("Todos los vouchers vigentes (no anulados) de la hoja en el orden nuevo; los números se reparten de menor a mayor en ese orden"),
 });
 export type OrdenHojaEntrada = z.infer<typeof ordenHojaSchema>;
 
