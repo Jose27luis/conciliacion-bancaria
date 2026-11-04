@@ -5,6 +5,7 @@ import {
   ApiCookieAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiServiceUnavailableResponse,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { errorApiSchema } from "@conciliacion/contracts";
@@ -12,7 +13,7 @@ import { createZodDto } from "nestjs-zod";
 
 export class ErrorApiDto extends createZodDto(errorApiSchema) {}
 
-type ErrorDocumentado = "validacion" | "noEncontrado" | "conflicto";
+type ErrorDocumentado = "validacion" | "noEncontrado" | "conflicto" | "noDisponible";
 
 export function ApiProtegida(...extra: ErrorDocumentado[]): MethodDecorator & ClassDecorator {
   const decoradores = [
@@ -28,6 +29,9 @@ export function ApiProtegida(...extra: ErrorDocumentado[]): MethodDecorator & Cl
   }
   if (extra.includes("conflicto")) {
     decoradores.push(ApiConflictResponse({ description: "El registro choca con otro existente", type: ErrorApiDto }));
+  }
+  if (extra.includes("noDisponible")) {
+    decoradores.push(ApiServiceUnavailableResponse({ description: "El servicio externo no está configurado o no respondió", type: ErrorApiDto }));
   }
   return applyDecorators(...decoradores);
 }
