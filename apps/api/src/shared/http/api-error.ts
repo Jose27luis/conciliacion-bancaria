@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import type { ErrorApi } from "@conciliacion/contracts";
 import { z } from "zod";
 
@@ -23,6 +23,7 @@ export const errores = {
   prohibido: (mensaje = "No tienes permiso para esta acción."): ForbiddenException => new ForbiddenException(cuerpo(mensaje)),
   noEncontrado: (mensaje = "No se encontró el registro."): NotFoundException => new NotFoundException(cuerpo(mensaje)),
   conflicto: (mensaje: string, detalle?: Record<string, string>): ConflictException => new ConflictException(cuerpo(mensaje, detalle)),
+  noDisponible: (mensaje: string): ServiceUnavailableException => new ServiceUnavailableException(cuerpo(mensaje)),
 };
 
 export function esErrorDeUnicidad(error: unknown): boolean {
