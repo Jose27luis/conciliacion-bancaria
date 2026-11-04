@@ -20,6 +20,7 @@ import {
   type LibroQuery,
   type LoteRegistrado,
   type LoteVouchersEntrada,
+  type OrdenHojaEntrada,
   type Moneda,
   type UsuarioSesion,
   type Voucher,
@@ -357,6 +358,48 @@ export class LedgerService {
       return resultado;
     });
     return aVoucher(anulado);
+  }
+
+  async ordenar(entrada: OrdenHojaEntrada, actor: UsuarioSesion): Promise<Hoja> {
+    const cuenta = await this.cuentaExistente(entrada.cuentaTesoreriaId);
+    if (new Set(entrada.voucherIds).size !== entrada.voucherIds.length) {
+      throw errores.validacion("La lista de vouchers tiene repetidos.");
+    }
+    await this.repositorio.transaccion(async (tx) => {
+      const periodoId = await this.periodos.periodoAbierto(tx, entrada.anio, entrada.mes);
+      const actuales = await this.repositorio.numerosDeHoja(tx, cuenta.id, periodoId);
+      const porId = new Map(actuales.map((voucher) => [voucher.id, voucher]));
+      if (actuales.length !== entrada.voucherIds.length || entrada.voucherIds.some((id) => !porId.has(id))) {
+        throw errores.conflicto("La hoja cambió mientras la ordenabas. Recarga la página e inténtalo de nuevo.");
+      }
+      const numeros = actuales.map((voucher) => voucher.numero);
+      const cambios: { id: string; antes: number; numero: number }[] = [];
+      entrada.voucherIds.forEach((id, posicion) => {
+        const voucher = porId.get(id);
+        const numero = numeros[posicion];
+        if (voucher && numero !== undefined && voucher.numero !== numero) {
+          if (voucher.estado === "ANULADO") {
+            throw errores.conflicto(`El voucher anulado ${formatoVoucher(entrada.mes, voucher.numero)} no se puede mover ni cambiar de número.`);
+          }
+          cambios.push({ id, antes: voucher.numero, numero });
+        }
+      });
+      if (cambios.length === 0) {
+        return;
+      }
+      await this.repositorio.renumerar(tx, cambios);
+      for (const cambio of cambios) {
+        await this.auditoria.registrar(tx, {
+          usuarioId: actor.id,
+          entidad: "voucher",
+          entidadId: cambio.id,
+          accion: "RENUMERAR",
+          antes: { codigo: formatoVoucher(entrada.mes, cambio.antes) },
+          despues: { codigo: formatoVoucher(entrada.mes, cambio.numero), cuenta: cuenta.nombre },
+        });
+      }
+    });
+    return this.hoja({ cuenta: cuenta.id, anio: entrada.anio, mes: entrada.mes });
   }
 
   async exportar(consulta: ExportacionQuery): Promise<ArchivoExportado> {
