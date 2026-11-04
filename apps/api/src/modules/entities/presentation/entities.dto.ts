@@ -1,6 +1,7 @@
 import {
   activacionSchema,
   busquedaEntidadesQuerySchema,
+  consultaDocumentoSchema,
   editarDetalleSchema,
   editarEntidadSchema,
   entidadConHistorialSchema,
@@ -12,6 +13,7 @@ import {
 import { createZodDto } from "nestjs-zod";
 
 export class EntidadDto extends createZodDto(entidadSchema) {}
+export class ConsultaDocumentoDto extends createZodDto(consultaDocumentoSchema) {}
 export class EntidadConHistorialDto extends createZodDto(entidadConHistorialSchema) {}
 export class BusquedaEntidadesQueryDto extends createZodDto(busquedaEntidadesQuerySchema) {}
 export class EntidadesQueryDto extends createZodDto(entidadesQuerySchema) {}
