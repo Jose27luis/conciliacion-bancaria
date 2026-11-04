@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Put, Query } from "@nestjs/common"
 import { ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import {
   ROLES_EDITAN_MAESTROS,
+  type ConsultaDocumento,
   type Entidad,
   type EntidadConHistorial,
   type EntidadMaestro,
@@ -13,10 +14,12 @@ import { ZodResponse } from "nestjs-zod";
 import { Roles, UsuarioActual } from "../../identity";
 import { ApiProtegida } from "../../../shared/http/api-docs";
 import { UuidParamPipe } from "../../../shared/http/uuid-param.pipe";
+import { DocumentLookupService } from "../application/document-lookup.service";
 import { EntitiesService } from "../application/entities.service";
 import {
   ActivacionDto,
   BusquedaEntidadesQueryDto,
+  ConsultaDocumentoDto,
   EditarDetalleDto,
   EditarEntidadDto,
   EntidadConHistorialDto,
@@ -32,7 +35,10 @@ const PARAM_DETALLE = { name: "detalleId", description: "Identificador del detal
 @ApiTags("Proveedores y clientes")
 @Controller("entities")
 export class EntitiesController {
-  constructor(private readonly entidades: EntitiesService) {}
+  constructor(
+    private readonly entidades: EntitiesService,
+    private readonly consultas: DocumentLookupService,
+  ) {}
 
   @Get()
   @ApiProtegida("validacion")
@@ -51,6 +57,18 @@ export class EntitiesController {
   @ZodResponse({ status: 200, description: "Hasta 8 coincidencias", type: [EntidadDto] })
   buscar(@Query() consulta: BusquedaEntidadesQueryDto): Promise<Entidad[]> {
     return this.entidades.buscar(consulta.q);
+  }
+
+  @Get("lookup/:documento")
+  @ApiParam({ name: "documento", description: "RUC de 11 dígitos o DNI de 8" })
+  @ApiProtegida("validacion", "noEncontrado", "noDisponible")
+  @ApiOperation({
+    summary: "Consultar RUC en SUNAT o DNI en RENIEC",
+    description: "Usa el servicio de PeruDevs. Valida el dígito verificador del RUC antes de consultar y guarda el resultado en memoria por 12 horas.",
+  })
+  @ZodResponse({ status: 200, description: "Datos del contribuyente o de la persona", type: ConsultaDocumentoDto })
+  consultarDocumento(@Param("documento") documento: string): Promise<ConsultaDocumento> {
+    return this.consultas.consultar(documento);
   }
 
   @Get("document/:documento")
