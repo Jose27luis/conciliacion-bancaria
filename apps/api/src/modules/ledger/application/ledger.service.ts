@@ -367,7 +367,7 @@ export class LedgerService {
     }
     await this.repositorio.transaccion(async (tx) => {
       const periodoId = await this.periodos.periodoAbierto(tx, entrada.anio, entrada.mes);
-      const actuales = await this.repositorio.numerosDeHoja(tx, cuenta.id, periodoId);
+      const actuales = (await this.repositorio.numerosDeHoja(tx, cuenta.id, periodoId)).filter((voucher) => voucher.estado === "REGISTRADO");
       const porId = new Map(actuales.map((voucher) => [voucher.id, voucher]));
       if (actuales.length !== entrada.voucherIds.length || entrada.voucherIds.some((id) => !porId.has(id))) {
         throw errores.conflicto("La hoja cambió mientras la ordenabas. Recarga la página e inténtalo de nuevo.");
@@ -378,9 +378,6 @@ export class LedgerService {
         const voucher = porId.get(id);
         const numero = numeros[posicion];
         if (voucher && numero !== undefined && voucher.numero !== numero) {
-          if (voucher.estado === "ANULADO") {
-            throw errores.conflicto(`El voucher anulado ${formatoVoucher(entrada.mes, voucher.numero)} no se puede mover ni cambiar de número.`);
-          }
           cambios.push({ id, antes: voucher.numero, numero });
         }
       });
