@@ -8,6 +8,11 @@ function requerida(nombre: string): string {
   return valor;
 }
 
+function opcional(nombre: string): string | null {
+  const valor = process.env[nombre]?.trim();
+  return valor ? valor : null;
+}
+
 function secretoSeguro(nombre: string): Uint8Array {
   const valor = requerida(nombre);
   if (valor.length < 32) {
@@ -24,4 +29,6 @@ export class AppConfigService {
   readonly secretoSesion = secretoSeguro("AUTH_SECRET");
   readonly duracionSesionSegundos = 60 * 60 * 10;
   readonly nombreCookieSesion = "conciliacion_sesion";
+  readonly perudevsUrl = opcional("PERUDEVS_URL");
+  readonly perudevsToken = opcional("PERUDEVS_TOKEN");
 }
