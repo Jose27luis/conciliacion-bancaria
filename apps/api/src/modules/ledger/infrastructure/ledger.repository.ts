@@ -116,7 +116,7 @@ export class LedgerRepository {
     return this.prisma.voucher.findMany({
       where: { cuentaTesoreriaId, periodo: { anio, mes } },
       select: camposVoucher,
-      orderBy: [{ fechaOperacion: "asc" }, { numero: "asc" }],
+      orderBy: { numero: "asc" },
     });
   }
 
@@ -166,8 +166,25 @@ export class LedgerRepository {
     return this.prisma.voucher.findMany({
       where: { estado: "REGISTRADO", periodo: { anio, mes }, ...(cuentaTesoreriaId ? { cuentaTesoreriaId } : {}) },
       select: camposVoucher,
-      orderBy: [{ fechaOperacion: "asc" }, { numero: "asc" }],
+      orderBy: { numero: "asc" },
     });
+  }
+
+  numerosDeHoja(tx: Transaccion, cuentaTesoreriaId: string, periodoId: string): Promise<{ id: string; numero: number; estado: "REGISTRADO" | "ANULADO" }[]> {
+    return tx.voucher.findMany({
+      where: { cuentaTesoreriaId, periodoId },
+      select: { id: true, numero: true, estado: true },
+      orderBy: { numero: "asc" },
+    });
+  }
+
+  async renumerar(tx: Transaccion, cambios: { id: string; numero: number }[]): Promise<void> {
+    for (const cambio of cambios) {
+      await tx.voucher.update({ where: { id: cambio.id }, data: { numero: -cambio.numero } });
+    }
+    for (const cambio of cambios) {
+      await tx.voucher.update({ where: { id: cambio.id }, data: { numero: cambio.numero } });
+    }
   }
 
   cuentasParaExportar(cuentaTesoreriaId: string | undefined): Promise<{ id: string; nombre: string; moneda: Moneda }[]> {
