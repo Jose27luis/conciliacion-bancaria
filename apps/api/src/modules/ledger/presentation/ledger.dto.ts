@@ -8,6 +8,7 @@ import {
   libroSchema,
   loteRegistradoSchema,
   loteVouchersSchema,
+  ordenHojaSchema,
   voucherEntradaSchema,
   voucherSchema,
 } from "@conciliacion/contracts";
@@ -24,3 +25,4 @@ export class VoucherDto extends createZodDto(voucherSchema) {}
 export class VoucherEntradaDto extends createZodDto(voucherEntradaSchema) {}
 export class AnularVoucherDto extends createZodDto(anularVoucherSchema) {}
 export class ExportacionQueryDto extends createZodDto(exportacionQuerySchema) {}
+export class OrdenHojaDto extends createZodDto(ordenHojaSchema) {}
