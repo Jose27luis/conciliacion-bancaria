@@ -6,8 +6,10 @@ import {
   consultaDocumentoSchema,
   entidadConHistorialSchema,
   entidadSchema,
+  hojaSchema,
   loteRegistradoSchema,
   loteVouchersSchema,
+  ordenHojaSchema,
   uuidSchema,
   voucherEntradaSchema,
   voucherSchema,
@@ -16,6 +18,7 @@ import {
   type Entidad,
   type EntidadConHistorial,
   type LoteVouchersEntrada,
+  type OrdenHojaEntrada,
   type VoucherEntrada,
 } from "@conciliacion/contracts";
 import { revalidatePath } from "next/cache";
@@ -89,6 +92,24 @@ export async function editarVoucher(id: string, entrada: VoucherEntrada): Promis
   } catch (error: unknown) {
     if (error instanceof ErrorDeApi) {
       return { estado: "error", mensaje: error.cuerpo.mensaje, errores: error.cuerpo.errores ?? {} };
+    }
+    throw error;
+  }
+}
+
+export async function ordenarHoja(entrada: OrdenHojaEntrada): Promise<{ estado: "ok" } | { estado: "error"; mensaje: string }> {
+  const datos = ordenHojaSchema.safeParse(entrada);
+  if (!datos.success) {
+    return { estado: "error", mensaje: "El orden enviado no es válido. Recarga la página e inténtalo de nuevo." };
+  }
+  try {
+    await api("/ledger/sheet/order", hojaSchema, { metodo: "PUT", json: datos.data });
+    revalidatePath("/quick-entry");
+    revalidatePath("/ledger");
+    return { estado: "ok" };
+  } catch (error: unknown) {
+    if (error instanceof ErrorDeApi) {
+      return { estado: "error", mensaje: error.cuerpo.mensaje };
     }
     throw error;
   }
