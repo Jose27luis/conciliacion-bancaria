@@ -186,7 +186,9 @@ export default async function LedgerPage({ searchParams }: Props) {
                         </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right tabular-nums">{importe(linea.ingreso) ? `${simbolo} ${importe(linea.ingreso)}` : ""}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">{importe(linea.egreso) ? `${simbolo} ${importe(linea.egreso)}` : ""}</TableCell>
+                      <TableCell className="whitespace-nowrap text-right tabular-nums">
+                        {importe(linea.egreso) ? `${simbolo} ${importe(linea.egreso)}` : Number(linea.ingreso) === 0 ? `${simbolo} 0.00` : ""}
+                      </TableCell>
                       <TableCell className="tabular-nums" title={linea.cuentaContableDenominacion}>
                         {linea.cuentaContableCodigo}
                       </TableCell>
