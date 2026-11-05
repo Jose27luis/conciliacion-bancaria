@@ -276,8 +276,10 @@ function validarLineas(borrador: VoucherBorrador, contexto: ContextoValidacion, 
     const egreso = montoACentavos(egresoTexto);
     if (formatoMalo) {
       problemas.push({ nivel: "error", campo: "importe", linea: indice, mensaje: "El importe debe ser un número con hasta 2 decimales." });
+    } else if (ingresoTexto === "" && egresoTexto === "") {
+      problemas.push({ nivel: "error", campo: "importe", linea: indice, mensaje: "Ingresa un importe en Ingreso o en Egreso; escribe 0 si el movimiento es en cero." });
     } else if (ingreso === 0 && egreso === 0) {
-      problemas.push({ nivel: "error", campo: "importe", linea: indice, mensaje: "Ingresa un importe en Ingreso o en Egreso." });
+      problemas.push({ nivel: "aviso", campo: "importe", linea: indice, mensaje: "Importe en 0: confirma que el movimiento sea sin monto." });
     } else if (ingreso > 0 && egreso > 0) {
       problemas.push({ nivel: "error", campo: "importe", linea: indice, mensaje: "Una línea no puede tener ingreso y egreso a la vez." });
     }
