@@ -145,7 +145,7 @@ export function RegisteredRows({ vouchers, enEdicion, editables, mostrarAnulados
           </div>
           <div className={cn(CELDA, "justify-end tabular-nums")}>{primera ? voucher.tipoCambio : ""}</div>
           <div className={cn(CELDA, "justify-end tabular-nums")}>{importe(linea.ingreso)}</div>
-          <div className={cn(CELDA, "justify-end tabular-nums")}>{importe(linea.egreso)}</div>
+          <div className={cn(CELDA, "justify-end tabular-nums")}>{Number(linea.ingreso) === 0 && Number(linea.egreso) === 0 ? "0.00" : importe(linea.egreso)}</div>
           <div className={cn(CELDA, "tabular-nums")} title={`${linea.cuentaContableCodigo} · ${linea.cuentaContableDenominacion}`}>
             {linea.cuentaContableCodigo}
           </div>
