@@ -79,7 +79,7 @@ export function borradorDesdeVoucher(voucher: Voucher): BorradorEdicion {
       id: nuevoId("linea"),
       detalle: linea.detalle,
       ingreso: sinCero(linea.ingreso),
-      egreso: sinCero(linea.egreso),
+      egreso: Number(linea.ingreso) === 0 && Number(linea.egreso) === 0 ? linea.egreso : sinCero(linea.egreso),
       cuentaContableCodigo: linea.cuentaContableCodigo,
     })),
   };
